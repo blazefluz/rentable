@@ -3,7 +3,11 @@ module Api
   module V1
     class BookingLineItemsController < ApplicationController
       before_action :set_booking
-      before_action :set_line_item, only: [:update, :advance_workflow, :set_workflow, :destroy]
+      before_action :set_line_item, only: [
+        :update, :advance_workflow, :set_workflow, :destroy,
+        :schedule_delivery, :advance_delivery, :mark_ready, :mark_out_for_delivery,
+        :complete_delivery, :fail_delivery, :cancel_delivery, :capture_signature, :delivery_cost
+      ]
 
       # PATCH /api/v1/bookings/:booking_id/line_items/:id
       def update
@@ -48,6 +52,119 @@ module Api
         @line_item.soft_delete!
         render json: {
           message: "Line item removed successfully"
+        }
+      end
+
+      # POST /api/v1/bookings/:booking_id/line_items/:id/schedule_delivery
+      def schedule_delivery
+        if @line_item.schedule_delivery!(
+          start_date: params[:start_date],
+          end_date: params[:end_date],
+          method: params[:method],
+          cost: params[:cost]&.to_f,
+          notes: params[:notes]
+        )
+          render json: {
+            success: true,
+            message: 'Delivery scheduled successfully',
+            line_item: line_item_json(@line_item)
+          }
+        else
+          render json: {
+            success: false,
+            errors: @line_item.errors.full_messages
+          }, status: :unprocessable_entity
+        end
+      end
+
+      # PATCH /api/v1/bookings/:booking_id/line_items/:id/advance_delivery
+      def advance_delivery
+        @line_item.advance_delivery_status!
+        render json: {
+          success: true,
+          message: "Delivery status advanced to #{@line_item.delivery_status}",
+          line_item: line_item_json(@line_item)
+        }
+      end
+
+      # PATCH /api/v1/bookings/:booking_id/line_items/:id/mark_ready
+      def mark_ready
+        @line_item.mark_ready_for_delivery!
+        render json: {
+          success: true,
+          message: 'Delivery marked as ready',
+          line_item: line_item_json(@line_item)
+        }
+      end
+
+      # PATCH /api/v1/bookings/:booking_id/line_items/:id/mark_out_for_delivery
+      def mark_out_for_delivery
+        @line_item.mark_out_for_delivery!(
+          tracking: params[:tracking_number],
+          carrier: params[:carrier]
+        )
+        render json: {
+          success: true,
+          message: 'Marked as out for delivery',
+          line_item: line_item_json(@line_item)
+        }
+      end
+
+      # POST /api/v1/bookings/:booking_id/line_items/:id/complete_delivery
+      def complete_delivery
+        signature_captured = params[:signature_captured] == 'true' || params[:signature_captured] == true
+        @line_item.complete_delivery!(signature_captured: signature_captured)
+        render json: {
+          success: true,
+          message: 'Delivery completed successfully',
+          line_item: line_item_json(@line_item)
+        }
+      end
+
+      # POST /api/v1/bookings/:booking_id/line_items/:id/fail_delivery
+      def fail_delivery
+        @line_item.fail_delivery!(reason: params[:reason])
+        render json: {
+          success: true,
+          message: 'Delivery marked as failed',
+          line_item: line_item_json(@line_item)
+        }
+      end
+
+      # DELETE /api/v1/bookings/:booking_id/line_items/:id/cancel_delivery
+      def cancel_delivery
+        @line_item.cancel_delivery!(reason: params[:reason])
+        render json: {
+          success: true,
+          message: 'Delivery cancelled',
+          line_item: line_item_json(@line_item)
+        }
+      end
+
+      # POST /api/v1/bookings/:booking_id/line_items/:id/capture_signature
+      def capture_signature
+        if @line_item.capture_signature!
+          render json: {
+            success: true,
+            message: 'Signature captured',
+            line_item: line_item_json(@line_item)
+          }
+        else
+          render json: {
+            success: false,
+            message: 'Signature not required or already captured'
+          }, status: :unprocessable_entity
+        end
+      end
+
+      # GET /api/v1/bookings/:booking_id/line_items/:id/delivery_cost
+      def delivery_cost
+        cost = @line_item.calculate_delivery_cost
+        render json: {
+          cost: cost.format,
+          cost_cents: cost.cents,
+          currency: cost.currency.to_s,
+          method: @line_item.delivery_method
         }
       end
 

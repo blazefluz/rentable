@@ -1,12 +1,12 @@
 class Current < ActiveSupport::CurrentAttributes
-  attribute :instance, :user
-  
+  attribute :tenant, :user
+
   # Convenience methods
-  def self.instance_id
-    instance&.id
+  def self.tenant_id
+    tenant&.id
   end
-  
+
   def self.tenant_set?
-    instance.present?
+    tenant.present?
   end
 end

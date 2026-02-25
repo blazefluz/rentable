@@ -26,7 +26,14 @@ Rails.application.routes.draw do
         collection do
           get 'search_by_barcode/:barcode', to: 'products#search_by_barcode', as: :search_by_barcode
         end
+        # Nested insurance certificates
+        resources :insurance_certificates, only: [:index, :show, :create, :update, :destroy]
+        # Nested product instances
+        resources :instances, controller: 'product_instances', only: [:index, :create]
       end
+
+      # Product Instances (standalone access)
+      resources :product_instances, only: [:index, :show, :update, :destroy]
 
       # Kits
       resources :kits do
@@ -58,6 +65,16 @@ Rails.application.routes.draw do
           member do
             post :advance_workflow
             patch :set_workflow
+            # Delivery tracking endpoints
+            post :schedule_delivery
+            patch :advance_delivery
+            patch :mark_ready
+            patch :mark_out_for_delivery
+            post :complete_delivery
+            post :fail_delivery
+            delete :cancel_delivery
+            post :capture_signature
+            get :delivery_cost
           end
         end
 
@@ -105,6 +122,28 @@ Rails.application.routes.draw do
 
       # Payments (standalone access)
       resources :payments, only: [:index, :show, :update]
+
+      # Deliveries (standalone access for reports and filtering)
+      resources :deliveries, only: [:index] do
+        collection do
+          get :scheduled
+          get :late
+        end
+      end
+
+      # Contracts & Digital Signatures
+      resources :contracts do
+        member do
+          post :sign
+          post :request_signature
+          get :generate_pdf
+          post :void
+          post :send_reminders
+        end
+        collection do
+          get :templates
+        end
+      end
 
       # Payments (Stripe)
       namespace :payments do
@@ -207,6 +246,31 @@ Rails.application.routes.draw do
           get :overdue
         end
       end
+
+      # Pricing Rules
+      resources :pricing_rules
+
+      # Product Bundles
+      resources :product_bundles do
+        collection do
+          get :check_requirements
+          get :suggestions
+        end
+      end
+
+      # QR Code Generation
+      get 'qr_codes/generate', to: 'qr_codes#generate', as: :qr_code_generate
+      get 'qr_codes/product/:id', to: 'qr_codes#product', as: :qr_code_product
+      get 'qr_codes/product_instance/:id', to: 'qr_codes#product_instance', as: :qr_code_product_instance
+      get 'qr_codes/location/:id', to: 'qr_codes#location', as: :qr_code_location
+      get 'qr_codes/booking/:id', to: 'qr_codes#booking', as: :qr_code_booking
+
+      # Public Catalog (no authentication required)
+      get 'catalog', to: 'catalog#index'
+      get 'catalog/featured', to: 'catalog#featured'
+      get 'catalog/popular', to: 'catalog#popular'
+      get 'catalog/search', to: 'catalog#search'
+      get 'catalog/recommendations/:product_id', to: 'catalog#recommendations', as: :catalog_recommendations
     end
   end
 
