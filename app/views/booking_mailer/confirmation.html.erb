@@ -1,0 +1,54 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <meta content='text/html; charset=UTF-8' http-equiv='Content-Type' />
+  <style>
+    body { font-family: Arial, sans-serif; line-height: 1.6; color: #333; max-width: 600px; margin: 0 auto; }
+    .header { background: #4F46E5; color: white; padding: 20px; text-align: center; }
+    .content { padding: 20px; background: #f9fafb; }
+    .booking-details { background: white; padding: 20px; border-radius: 8px; margin: 20px 0; }
+    .line-item { border-bottom: 1px solid #e5e7eb; padding: 10px 0; }
+    .total { font-size: 1.2em; font-weight: bold; margin-top: 20px; text-align: right; }
+    .footer { text-align: center; padding: 20px; color: #6b7280; font-size: 0.9em; }
+  </style>
+</head>
+<body>
+  <div class="header">
+    <h1>Booking Confirmation</h1>
+  </div>
+
+  <div class="content">
+    <p>Dear <%= @customer_name %>,</p>
+
+    <p>Your booking has been confirmed! Here are the details:</p>
+
+    <div class="booking-details">
+      <h2>Booking Reference: <%= @reference_number %></h2>
+
+      <p><strong>Rental Period:</strong><br>
+      From: <%= @start_date %><br>
+      To: <%= @end_date %></p>
+
+      <h3>Items:</h3>
+      <% @line_items.each do |item| %>
+        <div class="line-item">
+          <strong><%= item.bookable.name %></strong><br>
+          Quantity: <%= item.quantity %> | <%= item.days %> days | <%= Money.new(item.price_cents, item.price_currency).format %>
+        </div>
+      <% end %>
+
+      <div class="total">
+        Total: <%= @total_price %>
+      </div>
+    </div>
+
+    <p>Please ensure payment is completed before the pickup date. If you have any questions, feel free to contact us.</p>
+
+    <p>Thank you for choosing Rentable!</p>
+  </div>
+
+  <div class="footer">
+    <p>This is an automated email. Please do not reply directly.</p>
+  </div>
+</body>
+</html>

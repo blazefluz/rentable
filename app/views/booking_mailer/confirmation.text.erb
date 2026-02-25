@@ -1,0 +1,27 @@
+BOOKING CONFIRMATION
+====================
+
+Dear <%= @customer_name %>,
+
+Your booking has been confirmed!
+
+Booking Reference: <%= @reference_number %>
+
+Rental Period:
+From: <%= @start_date %>
+To: <%= @end_date %>
+
+Items:
+<% @line_items.each do |item| %>
+- <%= item.bookable.name %>
+  Quantity: <%= item.quantity %> | <%= item.days %> days | <%= Money.new(item.price_cents, item.price_currency).format %>
+<% end %>
+
+Total: <%= @total_price %>
+
+Please ensure payment is completed before the pickup date. If you have any questions, feel free to contact us.
+
+Thank you for choosing Rentable!
+
+---
+This is an automated email. Please do not reply directly.

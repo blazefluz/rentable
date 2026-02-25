@@ -15,6 +15,22 @@ test:
   <<: *default
   database: rentable_test
 
+sit:
+  <<: *default
+  database: rentable_sit
+  username: <%= ENV.fetch("DB_USER", "postgres") %>
+  password: <%= ENV["RENTABLE_DATABASE_PASSWORD"] %>
+  host: <%= ENV.fetch("DB_HOST", "localhost") %>
+  port: <%= ENV.fetch("DB_PORT", 5432) %>
+
+uat:
+  <<: *default
+  database: rentable_uat
+  username: <%= ENV.fetch("DB_USER", "postgres") %>
+  password: <%= ENV["RENTABLE_DATABASE_PASSWORD"] %>
+  host: <%= ENV.fetch("DB_HOST", "localhost") %>
+  port: <%= ENV.fetch("DB_PORT", 5432) %>
+
 production:
   primary: &primary_production
     <<: *default

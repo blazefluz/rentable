@@ -54,6 +54,19 @@ group :development, :test do
 
   # Omakase Ruby styling [https://github.com/rails/rubocop-rails-omakase/]
   gem "rubocop-rails-omakase", require: false
+
+  # Testing framework
+  gem "rspec-rails", "~> 7.1"
+  gem "factory_bot_rails", "~> 6.4"
+  gem "faker", "~> 3.5"
+  gem "shoulda-matchers", "~> 6.4"
+  gem "database_cleaner-active_record", "~> 2.2"
+end
+
+group :test do
+  gem "simplecov", require: false
+  gem "webmock", "~> 3.24"
+  gem "vcr", "~> 6.3"
 end
 
 group :development do
@@ -65,3 +78,28 @@ gem "money-rails", "~> 3.0"
 gem "monetize", "~> 2.0"
 
 gem "kaminari", "~> 1.2"
+gem "rack-cors"
+
+# Authentication
+gem "bcrypt", "~> 3.1.7"
+gem "jwt"
+
+# Payments
+gem "stripe"
+gem "paystack"
+
+gem "groupdate", "~> 6.7"
+
+gem "prawn", "~> 2.4"
+gem "prawn-table", "~> 0.2.2"
+gem "wicked_pdf", "~> 2.8"
+gem "wkhtmltopdf-binary", "~> 0.12.6"
+
+gem "paper_trail", "~> 17.0"
+
+gem "matrix", "~> 0.4.3"
+
+gem "rswag", "~> 2.17"
+gem "rswag-api", "~> 2.17"
+gem "rswag-ui", "~> 2.17"
+gem "rswag-specs", "~> 2.17"

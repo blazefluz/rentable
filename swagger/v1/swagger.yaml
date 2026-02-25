@@ -1,0 +1,776 @@
+openapi: 3.0.3
+info:
+  title: Rentable API
+  version: v1
+  description: |
+    API for managing rental equipment, bookings, and customers.
+
+    ## Authentication
+    Most endpoints require JWT authentication. Include the token in the Authorization header:
+    ```
+    Authorization: Bearer <your-token>
+    ```
+
+    ## Features
+    - **Products & Kits**: Manage individual items and equipment bundles
+    - **Bookings**: Create and manage rental bookings with line items
+    - **Clients & Locations**: Organize customers and storage/venue locations
+    - **Calendar & Availability**: Check availability and view booking calendars
+    - **Waitlist**: Customer waitlist when items are unavailable
+    - **Analytics**: Revenue, utilization, and business intelligence
+    - **Payments**: Stripe integration for payment processing
+
+  contact:
+    name: Rentable API Support
+servers:
+  - url: http://localhost:3000/api/v1
+    description: Development server
+  - url: https://api.rentable.com/api/v1
+    description: Production server
+
+components:
+  securitySchemes:
+    bearerAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT
+
+  schemas:
+    Product:
+      type: object
+      properties:
+        id:
+          type: integer
+        name:
+          type: string
+        description:
+          type: string
+        daily_price:
+          type: object
+          properties:
+            cents:
+              type: integer
+            formatted:
+              type: string
+        quantity:
+          type: integer
+        category:
+          type: string
+        active:
+          type: boolean
+        location_id:
+          type: integer
+          nullable: true
+
+    Kit:
+      type: object
+      properties:
+        id:
+          type: integer
+        name:
+          type: string
+        description:
+          type: string
+        daily_price:
+          type: object
+          properties:
+            cents:
+              type: integer
+            formatted:
+              type: string
+        active:
+          type: boolean
+        kit_items:
+          type: array
+          items:
+            type: object
+
+    Booking:
+      type: object
+      properties:
+        id:
+          type: integer
+        reference_number:
+          type: string
+        start_date:
+          type: string
+          format: date-time
+        end_date:
+          type: string
+          format: date-time
+        customer_name:
+          type: string
+        customer_email:
+          type: string
+        status:
+          type: string
+          enum: [pending, confirmed, paid, completed, cancelled]
+        total_price:
+          type: object
+          properties:
+            cents:
+              type: integer
+            formatted:
+              type: string
+
+    Client:
+      type: object
+      properties:
+        id:
+          type: integer
+        name:
+          type: string
+        email:
+          type: string
+        phone:
+          type: string
+        website:
+          type: string
+        archived:
+          type: boolean
+
+    Location:
+      type: object
+      properties:
+        id:
+          type: integer
+        name:
+          type: string
+        address:
+          type: string
+        client_id:
+          type: integer
+          nullable: true
+        parent_id:
+          type: integer
+          nullable: true
+
+    WaitlistEntry:
+      type: object
+      properties:
+        id:
+          type: integer
+        bookable_type:
+          type: string
+        bookable_id:
+          type: integer
+        customer_name:
+          type: string
+        customer_email:
+          type: string
+        start_date:
+          type: string
+          format: date-time
+        end_date:
+          type: string
+          format: date-time
+        quantity:
+          type: integer
+        status:
+          type: string
+          enum: [waiting, notified, fulfilled, cancelled, expired]
+
+    Error:
+      type: object
+      properties:
+        error:
+          type: string
+        errors:
+          type: array
+          items:
+            type: string
+
+paths:
+  /auth/register:
+    post:
+      tags:
+        - Authentication
+      summary: Register new user
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+                - email
+                - password
+                - name
+              properties:
+                email:
+                  type: string
+                  format: email
+                password:
+                  type: string
+                  minLength: 6
+                name:
+                  type: string
+      responses:
+        '201':
+          description: User created successfully
+        '422':
+          description: Validation error
+
+  /auth/login:
+    post:
+      tags:
+        - Authentication
+      summary: Login user
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+                - email
+                - password
+              properties:
+                email:
+                  type: string
+                  format: email
+                password:
+                  type: string
+      responses:
+        '200':
+          description: Login successful
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  token:
+                    type: string
+                  user:
+                    type: object
+        '401':
+          description: Invalid credentials
+
+  /products:
+    get:
+      tags:
+        - Products
+      summary: List all products
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: page
+          in: query
+          schema:
+            type: integer
+        - name: category
+          in: query
+          schema:
+            type: string
+        - name: active
+          in: query
+          schema:
+            type: boolean
+      responses:
+        '200':
+          description: Products list
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  products:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/Product'
+
+    post:
+      tags:
+        - Products
+      summary: Create new product
+      security:
+        - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/Product'
+      responses:
+        '201':
+          description: Product created
+        '422':
+          description: Validation error
+
+  /products/{id}:
+    get:
+      tags:
+        - Products
+      summary: Get product details
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+      responses:
+        '200':
+          description: Product details
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Product'
+        '404':
+          description: Product not found
+
+    patch:
+      tags:
+        - Products
+      summary: Update product
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/Product'
+      responses:
+        '200':
+          description: Product updated
+        '422':
+          description: Validation error
+
+    delete:
+      tags:
+        - Products
+      summary: Delete product
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+      responses:
+        '204':
+          description: Product deleted
+
+  /products/{id}/availability:
+    get:
+      tags:
+        - Products
+      summary: Check product availability
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+        - name: start_date
+          in: query
+          required: true
+          schema:
+            type: string
+            format: date
+        - name: end_date
+          in: query
+          required: true
+          schema:
+            type: string
+            format: date
+        - name: quantity
+          in: query
+          schema:
+            type: integer
+            default: 1
+      responses:
+        '200':
+          description: Availability information
+
+  /kits:
+    get:
+      tags:
+        - Kits
+      summary: List all kits
+      security:
+        - bearerAuth: []
+      responses:
+        '200':
+          description: Kits list
+
+    post:
+      tags:
+        - Kits
+      summary: Create new kit
+      security:
+        - bearerAuth: []
+      responses:
+        '201':
+          description: Kit created
+
+  /bookings:
+    get:
+      tags:
+        - Bookings
+      summary: List all bookings
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: status
+          in: query
+          schema:
+            type: string
+            enum: [pending, confirmed, paid, completed, cancelled]
+        - name: start_date
+          in: query
+          schema:
+            type: string
+            format: date
+        - name: end_date
+          in: query
+          schema:
+            type: string
+            format: date
+      responses:
+        '200':
+          description: Bookings list
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  bookings:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/Booking'
+
+    post:
+      tags:
+        - Bookings
+      summary: Create new booking
+      security:
+        - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/Booking'
+      responses:
+        '201':
+          description: Booking created
+        '422':
+          description: Validation error
+
+  /bookings/{id}/extend:
+    patch:
+      tags:
+        - Bookings
+      summary: Extend booking end date
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+                - new_end_date
+              properties:
+                new_end_date:
+                  type: string
+                  format: date
+      responses:
+        '200':
+          description: Booking extended successfully
+        '422':
+          description: Extension not possible
+
+  /clients:
+    get:
+      tags:
+        - Clients
+      summary: List all clients
+      security:
+        - bearerAuth: []
+      responses:
+        '200':
+          description: Clients list
+
+    post:
+      tags:
+        - Clients
+      summary: Create new client
+      security:
+        - bearerAuth: []
+      responses:
+        '201':
+          description: Client created
+
+  /locations:
+    get:
+      tags:
+        - Locations
+      summary: List all locations
+      security:
+        - bearerAuth: []
+      responses:
+        '200':
+          description: Locations list
+
+    post:
+      tags:
+        - Locations
+      summary: Create new location
+      security:
+        - bearerAuth: []
+      responses:
+        '201':
+          description: Location created
+
+  /calendar/month:
+    get:
+      tags:
+        - Calendar
+      summary: Get monthly calendar view
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: year
+          in: query
+          schema:
+            type: integer
+        - name: month
+          in: query
+          schema:
+            type: integer
+            minimum: 1
+            maximum: 12
+      responses:
+        '200':
+          description: Monthly calendar data
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  year:
+                    type: integer
+                  month:
+                    type: integer
+                  calendar:
+                    type: array
+                    items:
+                      type: object
+
+  /calendar/week:
+    get:
+      tags:
+        - Calendar
+      summary: Get weekly calendar view
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: date
+          in: query
+          schema:
+            type: string
+            format: date
+      responses:
+        '200':
+          description: Weekly calendar data
+
+  /calendar/timeline:
+    get:
+      tags:
+        - Calendar
+      summary: Get booking timeline/gantt view
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: start_date
+          in: query
+          schema:
+            type: string
+            format: date
+        - name: end_date
+          in: query
+          schema:
+            type: string
+            format: date
+      responses:
+        '200':
+          description: Timeline data
+
+  /waitlist_entries:
+    get:
+      tags:
+        - Waitlist
+      summary: List waitlist entries
+      security:
+        - bearerAuth: []
+      responses:
+        '200':
+          description: Waitlist entries
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/WaitlistEntry'
+
+    post:
+      tags:
+        - Waitlist
+      summary: Add customer to waitlist
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+                - bookable_type
+                - bookable_id
+                - customer_name
+                - customer_email
+                - start_date
+                - end_date
+              properties:
+                bookable_type:
+                  type: string
+                  enum: [Product, Kit]
+                bookable_id:
+                  type: integer
+                customer_name:
+                  type: string
+                customer_email:
+                  type: string
+                  format: email
+                customer_phone:
+                  type: string
+                start_date:
+                  type: string
+                  format: date-time
+                end_date:
+                  type: string
+                  format: date-time
+                quantity:
+                  type: integer
+                  default: 1
+                notes:
+                  type: string
+      responses:
+        '201':
+          description: Added to waitlist
+        '422':
+          description: Validation error
+
+  /waitlist_entries/check_fulfillable:
+    get:
+      tags:
+        - Waitlist
+      summary: Check which waitlist entries can be fulfilled
+      security:
+        - bearerAuth: []
+      responses:
+        '200':
+          description: Fulfillable entries
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  count:
+                    type: integer
+                  entries:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/WaitlistEntry'
+
+  /analytics/dashboard:
+    get:
+      tags:
+        - Analytics
+      summary: Get dashboard overview
+      security:
+        - bearerAuth: []
+      responses:
+        '200':
+          description: Dashboard metrics
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  total_revenue:
+                    type: object
+                  total_bookings:
+                    type: integer
+                  active_products:
+                    type: integer
+                  total_clients:
+                    type: integer
+
+  /analytics/revenue:
+    get:
+      tags:
+        - Analytics
+      summary: Get revenue analytics
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: period
+          in: query
+          schema:
+            type: string
+            enum: [week, month, quarter, year]
+            default: month
+      responses:
+        '200':
+          description: Revenue data
+
+  /analytics/utilization:
+    get:
+      tags:
+        - Analytics
+      summary: Get equipment utilization rates
+      security:
+        - bearerAuth: []
+      responses:
+        '200':
+          description: Utilization metrics
+
+tags:
+  - name: Authentication
+    description: User registration and login
+  - name: Products
+    description: Equipment and inventory management
+  - name: Kits
+    description: Equipment bundles
+  - name: Bookings
+    description: Rental bookings and reservations
+  - name: Clients
+    description: Customer management
+  - name: Locations
+    description: Storage and venue locations
+  - name: Calendar
+    description: Calendar views and availability
+  - name: Waitlist
+    description: Customer waitlist management
+  - name: Analytics
+    description: Business intelligence and reporting

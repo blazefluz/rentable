@@ -1,9 +1,22 @@
 # app/models/booking.rb
 class Booking < ApplicationRecord
+  # Audit trail
+  has_paper_trail
+
   # Associations
   has_many :booking_line_items, dependent: :destroy
   has_many :products, through: :booking_line_items, source: :bookable, source_type: "Product"
   has_many :kits, through: :booking_line_items, source: :bookable, source_type: "Kit"
+  has_many :payments, dependent: :destroy
+  has_many :booking_comments, dependent: :destroy
+  has_many_attached :attachments
+
+  belongs_to :client, optional: true
+  belongs_to :manager, class_name: "User", optional: true
+  belongs_to :venue_location, class_name: "Location", optional: true
+
+  # Nested attributes
+  accepts_nested_attributes_for :booking_line_items, allow_destroy: true
 
   # Monetize
   monetize :total_price_cents, as: :total_price, with_model_currency: :total_price_currency
@@ -22,7 +35,7 @@ class Booking < ApplicationRecord
   validates :start_date, :end_date, :customer_name, :customer_email, presence: true
   validates :customer_email, format: { with: URI::MailTo::EMAIL_REGEXP }
   validates :total_price_cents, numericality: { greater_than_or_equal_to: 0 }
-  validates :total_price_currency, inclusion: { in: %w[NGN USD] }
+  validates :total_price_currency, inclusion: { in: %w[USD EUR GBP] }
   validate :end_date_after_start_date
   validate :availability_on_create, on: :create
 
@@ -31,16 +44,48 @@ class Booking < ApplicationRecord
   before_validation :calculate_total_price
 
   # Scopes
-  scope :active, -> { where.not(status: [:cancelled]) }
+  scope :active, -> { where.not(status: [:cancelled]).where(deleted: false) }
   scope :confirmed_or_paid, -> { where(status: [:confirmed, :paid, :completed]) }
   scope :overlapping, ->(start_date, end_date) {
     where("start_date < ? AND end_date > ?", end_date, start_date)
   }
+  scope :archived_records, -> { where(archived: true) }
+  scope :not_archived, -> { where(archived: false) }
+  scope :not_deleted, -> { where(deleted: false) }
 
   # Calculate number of rental days
   def rental_days
     return 0 if start_date.nil? || end_date.nil?
     ((end_date.to_date - start_date.to_date).to_i + 1).clamp(1..)
+  end
+
+  # Soft delete
+  def soft_delete!
+    update(deleted: true)
+  end
+
+  # Archive
+  def archive!
+    update(archived: true)
+  end
+
+  def unarchive!
+    update(archived: false)
+  end
+
+  # Get total payments received
+  def total_payments_received
+    payments.where(payment_type: :payment_received, deleted: false).sum(:amount_cents)
+  end
+
+  # Get balance due
+  def balance_due
+    total_price_cents - total_payments_received
+  end
+
+  # Check if fully paid
+  def fully_paid?
+    balance_due <= 0
   end
 
   private
@@ -61,7 +106,7 @@ class Booking < ApplicationRecord
     return unless booking_line_items.any?
 
     days = rental_days
-    currency = booking_line_items.first&.price_currency || "NGN"
+    currency = booking_line_items.first&.price_currency || "USD"
 
     total_cents = booking_line_items.sum do |item|
       item.price_cents * item.quantity * days

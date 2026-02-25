@@ -1,0 +1,34 @@
+PAYMENT RECEIVED
+================
+
+Dear <%= @customer_name %>,
+
+✓ PAYMENT SUCCESSFUL
+
+We've received your payment! Your booking is now fully confirmed and ready for pickup.
+
+Booking Reference: <%= @reference_number %>
+
+Rental Period:
+From: <%= @start_date %>
+To: <%= @end_date %>
+
+Items:
+<% @line_items.each do |item| %>
+- <%= item.bookable.name %>
+  Quantity: <%= item.quantity %> | <%= item.days %> days | <%= Money.new(item.price_cents, item.price_currency).format %>
+<% end %>
+
+Amount Paid: <%= @total_price %>
+
+Next Steps:
+- Bring this email or your booking reference number for pickup
+- Equipment must be returned by the end date to avoid late fees
+- Inspect all items before leaving our location
+
+If you have any questions about your booking, please contact us.
+
+Thank you for your business!
+
+---
+This is an automated email. Please do not reply directly.

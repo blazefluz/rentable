@@ -2,7 +2,7 @@
 module Api
   module V1
     class KitsController < ApplicationController
-      before_action :set_kit, only: [:show, :update, :destroy, :availability]
+      before_action :set_kit, only: [:show, :update, :destroy, :availability, :attach_images, :remove_image]
 
       # GET /api/v1/kits
       def index
@@ -114,6 +114,28 @@ module Api
         }
       end
 
+      # POST /api/v1/kits/:id/attach_images
+      def attach_images
+        if params[:images].present?
+          @kit.images.attach(params[:images])
+          render json: {
+            message: "Images attached successfully",
+            images: @kit.images.map { |img| { id: img.id, url: rails_blob_url(img) } }
+          }
+        else
+          render json: { error: "No images provided" }, status: :unprocessable_entity
+        end
+      end
+
+      # DELETE /api/v1/kits/:id/remove_image/:image_id
+      def remove_image
+        image = @kit.images.find(params[:image_id])
+        image.purge
+        render json: { message: "Image removed successfully" }
+      rescue ActiveRecord::RecordNotFound
+        render json: { error: "Image not found" }, status: :not_found
+      end
+
       private
 
       def set_kit
@@ -126,7 +148,9 @@ module Api
         params.require(:kit).permit(
           :name, :description,
           :daily_price_cents, :daily_price_currency,
-          :active, images: []
+          :active,
+          kit_items_attributes: [:id, :product_id, :quantity, :_destroy],
+          images: []
         )
       end
 
@@ -142,6 +166,13 @@ module Api
           },
           active: kit.active,
           items_count: kit.kit_items.count,
+          kit_items: kit.kit_items.map do |item|
+            {
+              id: item.id,
+              product_id: item.product_id,
+              quantity: item.quantity
+            }
+          end,
           created_at: kit.created_at,
           updated_at: kit.updated_at
         }
