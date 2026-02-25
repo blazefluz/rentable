@@ -1,0 +1,35 @@
+default: &default
+  adapter: postgresql
+  encoding: unicode
+  host: localhost
+  port: 5432
+  username: postgres
+  password: password
+  max_connections: <%= ENV.fetch("RAILS_MAX_THREADS") { 5 } %>
+
+development:
+  <<: *default
+  database: rentable_development
+
+test:
+  <<: *default
+  database: rentable_test
+
+production:
+  primary: &primary_production
+    <<: *default
+    database: rentable_production
+    username: <%= ENV.fetch("DB_USER", "rentable") %>
+    password: <%= ENV["RENTABLE_DATABASE_PASSWORD"] %>
+  cache:
+    <<: *primary_production
+    database: rentable_production_cache
+    migrations_paths: db/cache_migrate
+  queue:
+    <<: *primary_production
+    database: rentable_production_queue
+    migrations_paths: db/queue_migrate
+  cable:
+    <<: *primary_production
+    database: rentable_production_cable
+    migrations_paths: db/cable_migrate
