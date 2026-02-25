@@ -4,7 +4,7 @@ class MaintenanceJob < ApplicationRecord
 
   monetize :cost_cents, allow_nil: true, with_model_currency: :cost_currency
 
-  enum status: {
+  enum :status, {
     pending: 0,
     in_progress: 1,
     completed: 2,
@@ -12,7 +12,7 @@ class MaintenanceJob < ApplicationRecord
     on_hold: 4
   }
 
-  enum priority: {
+  enum :priority, {
     low: 0,
     medium: 1,
     high: 2,

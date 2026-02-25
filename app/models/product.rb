@@ -8,6 +8,13 @@ class Product < ApplicationRecord
   has_many :kits, through: :kit_items
   has_many :booking_line_items, as: :bookable
   has_many :bookings, through: :booking_line_items
+  has_many :maintenance_jobs, dependent: :destroy
+  has_many :asset_assignments, dependent: :destroy
+  has_many :asset_logs, dependent: :destroy
+  has_many :product_asset_flags, dependent: :destroy
+  has_many :asset_flags, through: :product_asset_flags
+  has_many :asset_group_products, dependent: :destroy
+  has_many :asset_groups, through: :asset_group_products
   has_many_attached :images
 
   belongs_to :product_type, optional: true

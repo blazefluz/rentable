@@ -143,6 +143,30 @@ Rails.application.routes.draw do
           get :check_fulfillable
         end
       end
+
+      # Maintenance Jobs
+      resources :maintenance_jobs
+
+      # Asset Assignments
+      resources :asset_assignments do
+        member do
+          patch :return_asset
+        end
+      end
+
+      # Asset Flags
+      resources :asset_flags
+
+      # Asset Groups
+      resources :asset_groups do
+        member do
+          post 'add_product/:product_id', to: 'asset_groups#add_product', as: :add_product
+          delete 'remove_product/:product_id', to: 'asset_groups#remove_product', as: :remove_product
+        end
+      end
+
+      # Asset Logs
+      resources :asset_logs, only: [:index, :show, :create]
     end
   end
 

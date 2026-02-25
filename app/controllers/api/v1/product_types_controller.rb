@@ -11,6 +11,10 @@ module Api
                                     .page(params[:page])
                                     .per(params[:per_page] || 25)
 
+        # Filter by archived status
+        @product_types = @product_types.active unless params[:include_archived] == 'true'
+        @product_types = @product_types.archived if params[:archived] == 'true'
+
         # Filter by category
         @product_types = @product_types.by_category(params[:category]) if params[:category].present?
 
@@ -85,6 +89,7 @@ module Api
           :daily_price_cents, :daily_price_currency,
           :weekly_price_cents, :weekly_price_currency,
           :value_cents, :mass, :product_link,
+          :color, :discount_percentage, :archived,
           custom_fields: {}
         )
       end
@@ -95,6 +100,9 @@ module Api
           name: product_type.name,
           full_name: product_type.manufacturer ? product_type.full_name : product_type.name,
           category: product_type.category,
+          color: product_type.color,
+          discount_percentage: product_type.discount_percentage,
+          archived: product_type.archived,
           manufacturer_id: product_type.manufacturer_id,
           manufacturer_name: product_type.manufacturer&.name,
           daily_price: {
@@ -106,6 +114,12 @@ module Api
             amount: product_type.weekly_price_cents,
             currency: product_type.weekly_price_currency,
             formatted: product_type.weekly_price.format
+          },
+          discounted_daily_price: {
+            formatted: product_type.discounted_daily_price.format
+          },
+          discounted_weekly_price: {
+            formatted: product_type.discounted_weekly_price.format
           },
           products_count: product_type.products.count,
           created_at: product_type.created_at,

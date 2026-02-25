@@ -10,7 +10,7 @@
 #
 # It's strongly recommended that you check this file into your version control system.
 
-ActiveRecord::Schema[8.1].define(version: 2026_02_25_163123) do
+ActiveRecord::Schema[8.1].define(version: 2026_02_25_171233) do
   # These are extensions that must be enabled in order to support this database
   enable_extension "pg_catalog.plpgsql"
 
@@ -40,6 +40,63 @@ ActiveRecord::Schema[8.1].define(version: 2026_02_25_163123) do
     t.bigint "blob_id", null: false
     t.string "variation_digest", null: false
     t.index ["blob_id", "variation_digest"], name: "index_active_storage_variant_records_uniqueness", unique: true
+  end
+
+  create_table "asset_assignments", force: :cascade do |t|
+    t.bigint "assigned_to_id", null: false
+    t.string "assigned_to_type", null: false
+    t.datetime "created_at", null: false
+    t.boolean "deleted"
+    t.datetime "end_date"
+    t.text "notes"
+    t.bigint "product_id", null: false
+    t.string "purpose"
+    t.datetime "returned_date"
+    t.datetime "start_date"
+    t.integer "status"
+    t.datetime "updated_at", null: false
+    t.index ["assigned_to_type", "assigned_to_id"], name: "index_asset_assignments_on_assigned_to"
+    t.index ["product_id"], name: "index_asset_assignments_on_product_id"
+  end
+
+  create_table "asset_flags", force: :cascade do |t|
+    t.string "color"
+    t.datetime "created_at", null: false
+    t.boolean "deleted"
+    t.text "description"
+    t.string "icon"
+    t.string "name"
+    t.datetime "updated_at", null: false
+  end
+
+  create_table "asset_group_products", force: :cascade do |t|
+    t.bigint "asset_group_id", null: false
+    t.datetime "created_at", null: false
+    t.bigint "product_id", null: false
+    t.datetime "updated_at", null: false
+    t.index ["asset_group_id"], name: "index_asset_group_products_on_asset_group_id"
+    t.index ["product_id"], name: "index_asset_group_products_on_product_id"
+  end
+
+  create_table "asset_groups", force: :cascade do |t|
+    t.datetime "created_at", null: false
+    t.boolean "deleted"
+    t.text "description"
+    t.string "name"
+    t.datetime "updated_at", null: false
+  end
+
+  create_table "asset_logs", force: :cascade do |t|
+    t.datetime "created_at", null: false
+    t.text "description"
+    t.integer "log_type"
+    t.datetime "logged_at"
+    t.jsonb "metadata"
+    t.bigint "product_id", null: false
+    t.datetime "updated_at", null: false
+    t.bigint "user_id", null: false
+    t.index ["product_id"], name: "index_asset_logs_on_product_id"
+    t.index ["user_id"], name: "index_asset_logs_on_user_id"
   end
 
   create_table "booking_comments", force: :cascade do |t|
@@ -164,6 +221,25 @@ ActiveRecord::Schema[8.1].define(version: 2026_02_25_163123) do
     t.index ["parent_id"], name: "index_locations_on_parent_id"
   end
 
+  create_table "maintenance_jobs", force: :cascade do |t|
+    t.bigint "assigned_to_id"
+    t.datetime "completed_date"
+    t.integer "cost_cents"
+    t.string "cost_currency"
+    t.datetime "created_at", null: false
+    t.boolean "deleted"
+    t.text "description"
+    t.text "notes"
+    t.integer "priority"
+    t.bigint "product_id", null: false
+    t.datetime "scheduled_date"
+    t.integer "status"
+    t.string "title"
+    t.datetime "updated_at", null: false
+    t.index ["assigned_to_id"], name: "index_maintenance_jobs_on_assigned_to_id"
+    t.index ["product_id"], name: "index_maintenance_jobs_on_product_id"
+  end
+
   create_table "manufacturers", force: :cascade do |t|
     t.datetime "created_at", null: false
     t.string "name", null: false
@@ -193,13 +269,25 @@ ActiveRecord::Schema[8.1].define(version: 2026_02_25_163123) do
     t.index ["payment_type"], name: "index_payments_on_payment_type"
   end
 
+  create_table "product_asset_flags", force: :cascade do |t|
+    t.bigint "asset_flag_id", null: false
+    t.datetime "created_at", null: false
+    t.bigint "product_id", null: false
+    t.datetime "updated_at", null: false
+    t.index ["asset_flag_id"], name: "index_product_asset_flags_on_asset_flag_id"
+    t.index ["product_id"], name: "index_product_asset_flags_on_product_id"
+  end
+
   create_table "product_types", force: :cascade do |t|
+    t.boolean "archived", default: false
     t.string "category"
+    t.string "color"
     t.datetime "created_at", null: false
     t.jsonb "custom_fields", default: {}
     t.integer "daily_price_cents", default: 0, null: false
     t.string "daily_price_currency", default: "USD", null: false
     t.text "description"
+    t.decimal "discount_percentage", precision: 5, scale: 2
     t.bigint "manufacturer_id"
     t.decimal "mass", precision: 10, scale: 2
     t.string "name", null: false
@@ -294,6 +382,11 @@ ActiveRecord::Schema[8.1].define(version: 2026_02_25_163123) do
 
   add_foreign_key "active_storage_attachments", "active_storage_blobs", column: "blob_id"
   add_foreign_key "active_storage_variant_records", "active_storage_blobs", column: "blob_id"
+  add_foreign_key "asset_assignments", "products"
+  add_foreign_key "asset_group_products", "asset_groups"
+  add_foreign_key "asset_group_products", "products"
+  add_foreign_key "asset_logs", "products"
+  add_foreign_key "asset_logs", "users"
   add_foreign_key "booking_comments", "bookings"
   add_foreign_key "booking_comments", "users"
   add_foreign_key "booking_line_items", "bookings"
@@ -304,7 +397,11 @@ ActiveRecord::Schema[8.1].define(version: 2026_02_25_163123) do
   add_foreign_key "kit_items", "products"
   add_foreign_key "locations", "clients"
   add_foreign_key "locations", "locations", column: "parent_id"
+  add_foreign_key "maintenance_jobs", "products"
+  add_foreign_key "maintenance_jobs", "users", column: "assigned_to_id"
   add_foreign_key "payments", "bookings"
+  add_foreign_key "product_asset_flags", "asset_flags"
+  add_foreign_key "product_asset_flags", "products"
   add_foreign_key "product_types", "manufacturers"
   add_foreign_key "products", "locations", column: "storage_location_id"
   add_foreign_key "products", "product_types"
