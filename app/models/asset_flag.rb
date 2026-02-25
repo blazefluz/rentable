@@ -1,4 +1,6 @@
 class AssetFlag < ApplicationRecord
+  include ActsAsTenant
+
   has_many :product_asset_flags, dependent: :destroy
   has_many :products, through: :product_asset_flags
 

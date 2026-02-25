@@ -1,4 +1,6 @@
 class MaintenanceJob < ApplicationRecord
+  include ActsAsTenant
+
   belongs_to :product
   belongs_to :assigned_to, class_name: 'User', optional: true
 

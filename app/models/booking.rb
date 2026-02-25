@@ -1,5 +1,7 @@
 # app/models/booking.rb
 class Booking < ApplicationRecord
+  include ActsAsTenant
+
   # Audit trail
   has_paper_trail
 

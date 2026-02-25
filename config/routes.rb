@@ -88,6 +88,9 @@ Rails.application.routes.draw do
 
       # Locations (storage & venues)
       resources :locations do
+        collection do
+          get 'search_by_barcode/:barcode', to: 'locations#search_by_barcode', as: :search_by_barcode
+        end
         member do
           patch :archive
           patch :unarchive
@@ -167,6 +170,43 @@ Rails.application.routes.draw do
 
       # Asset Logs
       resources :asset_logs, only: [:index, :show, :create]
+
+      # Project Types
+      resources :project_types
+
+      # Staffing
+      resources :staff_roles
+      resources :staff_applications do
+        member do
+          patch :approve
+          patch :reject
+        end
+      end
+      resources :staff_assignments
+
+      # Notes
+      resources :notes do
+        member do
+          patch :pin
+          patch :unpin
+        end
+      end
+
+      # Business Entities
+      resources :business_entities
+
+      # Addresses
+      resources :addresses
+
+      # Sales Tasks
+      resources :sales_tasks do
+        member do
+          patch :complete
+        end
+        collection do
+          get :overdue
+        end
+      end
     end
   end
 

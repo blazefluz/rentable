@@ -1,4 +1,6 @@
 class ProductType < ApplicationRecord
+  include ActsAsTenant
+
   # Associations
   belongs_to :manufacturer, optional: true
   has_many :products, dependent: :nullify

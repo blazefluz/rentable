@@ -1,4 +1,6 @@
 class WaitlistEntry < ApplicationRecord
+  include ActsAsTenant
+
   # Associations
   belongs_to :bookable, polymorphic: true
 

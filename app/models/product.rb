@@ -1,5 +1,7 @@
 # app/models/product.rb
 class Product < ApplicationRecord
+  include ActsAsTenant
+
   # Audit trail
   has_paper_trail
 

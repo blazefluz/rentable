@@ -1,4 +1,6 @@
 class AssetAssignment < ApplicationRecord
+  include ActsAsTenant
+
   belongs_to :product
   belongs_to :assigned_to, polymorphic: true
 

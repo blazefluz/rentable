@@ -1,4 +1,6 @@
 class Manufacturer < ApplicationRecord
+  include ActsAsTenant
+
   # Associations
   has_many :product_types, dependent: :destroy
   has_many :products, through: :product_types

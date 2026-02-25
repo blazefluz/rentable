@@ -1,4 +1,6 @@
 class Payment < ApplicationRecord
+  include ActsAsTenant
+
   # Audit trail
   has_paper_trail
 

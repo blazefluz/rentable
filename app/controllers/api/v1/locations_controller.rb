@@ -18,10 +18,24 @@ module Api
         # Filter by parent (only root locations)
         @locations = @locations.root_locations if params[:root_only] == 'true'
 
+        # Search by barcode
+        @locations = @locations.by_barcode(params[:barcode]) if params[:barcode].present?
+
         render json: {
           locations: @locations.map { |l| location_json(l) },
           meta: pagination_meta(@locations)
         }
+      end
+
+      # GET /api/v1/locations/search_by_barcode/:barcode
+      def search_by_barcode
+        @location = Location.active.find_by(barcode: params[:barcode])
+
+        if @location
+          render json: { location: location_detail_json(@location) }
+        else
+          render json: { error: 'Location not found' }, status: :not_found
+        end
       end
 
       # GET /api/v1/locations/:id
@@ -97,7 +111,7 @@ module Api
 
       def location_params
         params.require(:location).permit(
-          :name, :address, :notes, :client_id, :parent_id
+          :name, :address, :notes, :client_id, :parent_id, :barcode
         )
       end
 

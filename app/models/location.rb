@@ -1,4 +1,6 @@
 class Location < ApplicationRecord
+  include ActsAsTenant
+
   # Associations
   belongs_to :client, optional: true
   belongs_to :parent, class_name: "Location", optional: true
@@ -12,11 +14,13 @@ class Location < ApplicationRecord
 
   # Validations
   validates :name, presence: true
+  validates :barcode, uniqueness: true, allow_blank: true
 
   # Scopes
   scope :active, -> { where(archived: false, deleted: false) }
   scope :archived, -> { where(archived: true) }
   scope :root_locations, -> { where(parent_id: nil) }
+  scope :by_barcode, ->(barcode) { where(barcode: barcode) }
 
   # Soft delete
   def soft_delete!
