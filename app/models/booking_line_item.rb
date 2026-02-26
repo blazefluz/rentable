@@ -14,10 +14,14 @@ class BookingLineItem < ApplicationRecord
   belongs_to :location_transfer, optional: true
   belongs_to :delivered_by, class_name: "User", optional: true
 
+  # Tax tracking
+  belongs_to :tax_rate, optional: true
+
   # Monetize
   monetize :price_cents, as: :price, with_model_currency: :price_currency
   monetize :late_fee_cents, as: :late_fee, with_model_currency: :late_fee_currency
   monetize :delivery_cost_cents, as: :delivery_cost, with_model_currency: :delivery_cost_currency
+  monetize :tax_amount_cents, as: :tax_amount, with_model_currency: :tax_amount_currency, allow_nil: true
 
   # Enums for workflow status (matching AdamRMS 0-110 scale)
   enum :workflow_status, {
@@ -693,6 +697,71 @@ class BookingLineItem < ApplicationRecord
   # Check if requires delivery (not pickup)
   def requires_delivery?
     !delivery_method_pickup?
+  end
+
+  # ============================================================================
+  # TAX CALCULATION (Public methods)
+  # ============================================================================
+
+  # Calculate tax for this line item
+  def calculate_tax
+    # Default to taxable unless explicitly marked as non-taxable
+    self.taxable = true if taxable.nil?
+
+    # If not taxable, set tax to 0
+    unless taxable?
+      self.tax_amount_cents = 0
+      self.tax_amount_currency = price_currency
+      return Money.new(0, price_currency)
+    end
+
+    # Get the tax rate to use
+    rate = effective_tax_rate
+    return Money.new(0, price_currency) unless rate
+
+    # Calculate tax on line total (after discount)
+    tax_cents = rate.calculate_tax(line_total.cents, price_currency)
+
+    self.tax_amount_cents = tax_cents
+    self.tax_amount_currency = price_currency
+    self.tax_rate = rate
+
+    Money.new(tax_cents, price_currency)
+  end
+
+  # Get the effective tax rate for this line item
+  def effective_tax_rate
+    # 1. Use explicitly assigned tax rate
+    return tax_rate if tax_rate.present?
+
+    # 2. Use booking's default tax rate
+    return booking.default_tax_rate if booking&.default_tax_rate.present?
+
+    # 3. Look up tax rate based on booking location
+    return nil unless booking&.venue_location
+
+    # Get the first applicable tax rate for the location
+    applicable_rates = booking.applicable_tax_rates
+    applicable_rates.first
+  end
+
+  # Total including tax
+  def line_total_with_tax
+    line_total + (tax_amount || Money.new(0, price_currency))
+  end
+
+  # Get tax breakdown for this line item
+  def tax_breakdown
+    {
+      line_subtotal: line_subtotal,
+      discount: line_subtotal - line_total,
+      line_total: line_total,
+      taxable: taxable?,
+      tax_rate: tax_rate&.display_name,
+      tax_rate_percentage: tax_rate&.display_rate,
+      tax_amount: tax_amount,
+      total_with_tax: line_total_with_tax
+    }
   end
 
   private

@@ -1,4 +1,6 @@
 class Api::V1::CatalogController < ApplicationController
+  # Public catalog browsing - no authentication required
+  skip_before_action :authenticate_user!
   skip_before_action :verify_authenticity_token
 
   def index

@@ -101,7 +101,21 @@ Rails.application.routes.draw do
         end
         # Nested attachments resource
         resources :attachments, controller: 'client_attachments', only: [:index, :create, :destroy]
+        # Nested CRM resources
+        resources :contacts, only: [:index, :create]
+        resources :communications, controller: 'client_communications', only: [:index, :create]
       end
+
+      # CRM Resources (standalone)
+      resources :contacts, only: [:show, :update, :destroy]
+      resources :client_communications, only: [:show, :update, :destroy]
+      resources :leads do
+        member do
+          post :convert
+          post :mark_lost
+        end
+      end
+      resources :client_tags
 
       # Locations (storage & venues)
       resources :locations do
@@ -255,6 +269,30 @@ Rails.application.routes.draw do
         collection do
           get :check_requirements
           get :suggestions
+        end
+      end
+
+      # Product Collections/Categorization
+      resources :product_collections do
+        member do
+          post :add_product
+          delete :remove_product
+          patch :reorder
+          get :analytics
+          post :refresh
+        end
+        collection do
+          get :featured
+        end
+      end
+
+      # Tax Rates
+      resources :tax_rates do
+        collection do
+          get :for_location
+        end
+        member do
+          post :calculate
         end
       end
 

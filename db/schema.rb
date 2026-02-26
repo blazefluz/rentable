@@ -10,7 +10,7 @@
 #
 # It's strongly recommended that you check this file into your version control system.
 
-ActiveRecord::Schema[8.1].define(version: 2026_02_25_223317) do
+ActiveRecord::Schema[8.1].define(version: 2026_02_26_003456) do
   # These are extensions that must be enabled in order to support this database
   enable_extension "pg_catalog.plpgsql"
 
@@ -195,6 +195,10 @@ ActiveRecord::Schema[8.1].define(version: 2026_02_25_223317) do
     t.boolean "requires_transfer", default: false
     t.datetime "signature_captured_at"
     t.boolean "signature_required", default: false
+    t.integer "tax_amount_cents"
+    t.string "tax_amount_currency"
+    t.bigint "tax_rate_id"
+    t.boolean "taxable"
     t.integer "transfer_status", default: 0
     t.datetime "updated_at", null: false
     t.integer "workflow_status", default: 0, null: false
@@ -254,6 +258,7 @@ ActiveRecord::Schema[8.1].define(version: 2026_02_25_223317) do
 
   create_table "bookings", force: :cascade do |t|
     t.boolean "archived", default: false, null: false
+    t.string "campaign_id"
     t.integer "cancellation_deadline_hours", default: 168
     t.decimal "cancellation_fee_percentage", precision: 5, scale: 2, default: "0.0"
     t.integer "cancellation_policy", default: 0, null: false
@@ -267,12 +272,17 @@ ActiveRecord::Schema[8.1].define(version: 2026_02_25_223317) do
     t.string "customer_name", null: false
     t.string "customer_phone"
     t.decimal "default_discount", precision: 5, scale: 2, default: "0.0"
+    t.bigint "default_tax_rate_id"
     t.boolean "deleted", default: false, null: false
     t.datetime "delivery_end_date"
     t.datetime "delivery_start_date"
     t.datetime "end_date", null: false
+    t.integer "grand_total_cents"
+    t.string "grand_total_currency"
     t.bigint "instance_id"
     t.text "invoice_notes"
+    t.bigint "lead_id"
+    t.string "lead_source"
     t.bigint "manager_id"
     t.text "notes"
     t.bigint "project_type_id"
@@ -289,19 +299,35 @@ ActiveRecord::Schema[8.1].define(version: 2026_02_25_223317) do
     t.datetime "quote_viewed_at"
     t.bigint "recurring_booking_id"
     t.string "reference_number"
+    t.string "referral_code"
     t.integer "refund_amount_cents", default: 0
     t.string "refund_amount_currency", default: "USD"
     t.datetime "refund_processed_at"
     t.integer "refund_status", default: 0
+    t.boolean "reverse_charge_applied"
     t.integer "security_deposit_cents"
     t.string "security_deposit_currency", default: "USD"
     t.datetime "security_deposit_refunded_at"
     t.integer "security_deposit_status", default: 0
     t.datetime "start_date", null: false
     t.integer "status", default: 0, null: false
+    t.integer "subtotal_cents"
+    t.string "subtotal_currency"
+    t.boolean "tax_exempt"
+    t.string "tax_exempt_certificate"
+    t.text "tax_exempt_reason"
+    t.boolean "tax_override"
+    t.integer "tax_override_amount_cents"
+    t.bigint "tax_override_by_id"
+    t.text "tax_override_reason"
+    t.integer "tax_total_cents"
+    t.string "tax_total_currency"
     t.integer "total_price_cents", default: 0, null: false
     t.string "total_price_currency", default: "USD", null: false
     t.datetime "updated_at", null: false
+    t.string "utm_campaign"
+    t.string "utm_medium"
+    t.string "utm_source"
     t.bigint "venue_location_id"
     t.index ["archived"], name: "index_bookings_on_archived"
     t.index ["cancellation_policy"], name: "index_bookings_on_cancellation_policy"
@@ -345,27 +371,170 @@ ActiveRecord::Schema[8.1].define(version: 2026_02_25_223317) do
     t.index ["instance_id"], name: "index_business_entities_on_instance_id"
   end
 
+  create_table "client_communications", force: :cascade do |t|
+    t.string "attachment"
+    t.bigint "client_id", null: false
+    t.datetime "communicated_at"
+    t.integer "communication_type"
+    t.bigint "contact_id", null: false
+    t.datetime "created_at", null: false
+    t.integer "direction"
+    t.text "notes"
+    t.string "subject"
+    t.datetime "updated_at", null: false
+    t.bigint "user_id", null: false
+    t.index ["client_id"], name: "index_client_communications_on_client_id"
+    t.index ["contact_id"], name: "index_client_communications_on_contact_id"
+    t.index ["user_id"], name: "index_client_communications_on_user_id"
+  end
+
+  create_table "client_metrics", force: :cascade do |t|
+    t.decimal "average_rental_duration"
+    t.bigint "client_id", null: false
+    t.datetime "created_at", null: false
+    t.integer "items_rented"
+    t.date "metric_date"
+    t.integer "rentals_count"
+    t.integer "revenue_cents"
+    t.string "revenue_currency"
+    t.datetime "updated_at", null: false
+    t.decimal "utilization_rate"
+    t.index ["client_id"], name: "index_client_metrics_on_client_id"
+  end
+
+  create_table "client_surveys", force: :cascade do |t|
+    t.bigint "booking_id", null: false
+    t.bigint "client_id", null: false
+    t.datetime "created_at", null: false
+    t.text "feedback"
+    t.integer "nps_score"
+    t.integer "response_time_hours"
+    t.integer "satisfaction_score"
+    t.datetime "survey_completed_at"
+    t.datetime "survey_sent_at"
+    t.integer "survey_type"
+    t.datetime "updated_at", null: false
+    t.boolean "would_recommend"
+    t.index ["booking_id"], name: "index_client_surveys_on_booking_id"
+    t.index ["client_id"], name: "index_client_surveys_on_client_id"
+  end
+
+  create_table "client_taggings", force: :cascade do |t|
+    t.bigint "client_id", null: false
+    t.bigint "client_tag_id", null: false
+    t.datetime "created_at", null: false
+    t.datetime "tagged_at"
+    t.bigint "tagged_by_id"
+    t.datetime "updated_at", null: false
+    t.index ["client_id"], name: "index_client_taggings_on_client_id"
+    t.index ["client_tag_id"], name: "index_client_taggings_on_client_tag_id"
+  end
+
+  create_table "client_tags", force: :cascade do |t|
+    t.boolean "active"
+    t.string "color"
+    t.datetime "created_at", null: false
+    t.text "description"
+    t.string "icon"
+    t.string "name"
+    t.datetime "updated_at", null: false
+  end
+
+  create_table "client_users", force: :cascade do |t|
+    t.boolean "active"
+    t.bigint "client_id", null: false
+    t.datetime "confirmation_sent_at"
+    t.string "confirmation_token"
+    t.datetime "confirmed_at"
+    t.bigint "contact_id", null: false
+    t.datetime "created_at", null: false
+    t.datetime "current_sign_in_at"
+    t.string "current_sign_in_ip"
+    t.string "email"
+    t.string "encrypted_password"
+    t.datetime "last_sign_in_at"
+    t.string "last_sign_in_ip"
+    t.string "password_digest"
+    t.datetime "password_reset_sent_at"
+    t.string "password_reset_token"
+    t.integer "sign_in_count"
+    t.datetime "updated_at", null: false
+    t.index ["client_id"], name: "index_client_users_on_client_id"
+    t.index ["contact_id"], name: "index_client_users_on_contact_id"
+  end
+
   create_table "clients", force: :cascade do |t|
+    t.bigint "account_manager_id"
     t.integer "account_value_cents"
     t.string "account_value_currency", default: "USD"
     t.text "address"
+    t.date "approved_credit_date"
     t.boolean "archived", default: false, null: false
+    t.integer "average_booking_value_cents"
+    t.string "average_booking_value_currency"
+    t.integer "churn_risk"
+    t.string "company_size"
     t.datetime "created_at", null: false
+    t.integer "credit_limit_cents"
+    t.string "credit_limit_currency"
+    t.text "credit_notes"
+    t.integer "credit_status"
+    t.jsonb "custom_fields"
     t.boolean "deleted", default: false, null: false
+    t.decimal "deposit_percentage"
     t.string "email"
+    t.string "facebook_url"
+    t.date "first_rental_date"
+    t.integer "health_score"
+    t.string "industry"
+    t.string "instagram_handle"
     t.bigint "instance_id"
+    t.datetime "last_activity_at"
+    t.date "last_rental_date"
+    t.integer "lifetime_value_cents"
+    t.string "lifetime_value_currency"
+    t.string "linkedin_url"
+    t.string "market_segment"
     t.string "name", null: false
     t.text "notes"
+    t.integer "outstanding_balance_cents"
+    t.string "outstanding_balance_currency"
+    t.bigint "parent_client_id"
+    t.string "payment_method"
+    t.integer "payment_terms_days"
     t.string "phone"
     t.integer "position"
     t.integer "priority", default: 1
+    t.integer "priority_level"
+    t.boolean "requires_deposit"
+    t.string "service_tier"
+    t.integer "total_rentals"
+    t.string "twitter_handle"
     t.datetime "updated_at", null: false
     t.string "website"
+    t.string "website_url"
     t.index ["archived"], name: "index_clients_on_archived"
     t.index ["deleted"], name: "index_clients_on_deleted"
     t.index ["email"], name: "index_clients_on_email"
     t.index ["instance_id", "archived"], name: "index_clients_on_instance_id_and_archived"
     t.index ["instance_id"], name: "index_clients_on_instance_id"
+  end
+
+  create_table "collection_views", force: :cascade do |t|
+    t.datetime "created_at", null: false
+    t.string "ip_address"
+    t.bigint "product_collection_id", null: false
+    t.string "referrer"
+    t.string "session_id"
+    t.datetime "updated_at", null: false
+    t.string "user_agent"
+    t.bigint "user_id"
+    t.datetime "viewed_at"
+    t.index ["product_collection_id", "viewed_at"], name: "index_collection_views_on_product_collection_id_and_viewed_at"
+    t.index ["product_collection_id"], name: "index_collection_views_on_product_collection_id"
+    t.index ["session_id"], name: "index_collection_views_on_session_id"
+    t.index ["user_id"], name: "index_collection_views_on_user_id"
+    t.index ["viewed_at"], name: "index_collection_views_on_viewed_at"
   end
 
   create_table "comment_upvotes", force: :cascade do |t|
@@ -392,6 +561,23 @@ ActiveRecord::Schema[8.1].define(version: 2026_02_25_223317) do
     t.index ["instance_id"], name: "index_comments_on_instance_id"
     t.index ["parent_comment_id"], name: "index_comments_on_parent_comment_id"
     t.index ["user_id"], name: "index_comments_on_user_id"
+  end
+
+  create_table "contacts", force: :cascade do |t|
+    t.bigint "client_id", null: false
+    t.datetime "created_at", null: false
+    t.boolean "decision_maker"
+    t.string "email"
+    t.string "first_name"
+    t.boolean "is_primary"
+    t.string "last_name"
+    t.string "mobile"
+    t.text "notes"
+    t.string "phone"
+    t.boolean "receives_invoices"
+    t.string "title"
+    t.datetime "updated_at", null: false
+    t.index ["client_id"], name: "index_contacts_on_client_id"
   end
 
   create_table "contract_signatures", force: :cascade do |t|
@@ -550,6 +736,26 @@ ActiveRecord::Schema[8.1].define(version: 2026_02_25_223317) do
     t.datetime "updated_at", null: false
     t.index ["active"], name: "index_kits_on_active"
     t.index ["instance_id"], name: "index_kits_on_instance_id"
+  end
+
+  create_table "leads", force: :cascade do |t|
+    t.bigint "assigned_to_id"
+    t.string "company"
+    t.datetime "converted_at"
+    t.bigint "converted_to_client_id"
+    t.datetime "created_at", null: false
+    t.string "email"
+    t.date "expected_close_date"
+    t.integer "expected_value_cents"
+    t.string "expected_value_currency"
+    t.text "lost_reason"
+    t.string "name"
+    t.text "notes"
+    t.string "phone"
+    t.integer "probability"
+    t.string "source"
+    t.integer "status"
+    t.datetime "updated_at", null: false
   end
 
   create_table "location_histories", force: :cascade do |t|
@@ -785,6 +991,47 @@ ActiveRecord::Schema[8.1].define(version: 2026_02_25_223317) do
     t.index ["instance_id"], name: "index_product_bundles_on_instance_id"
   end
 
+  create_table "product_collection_items", force: :cascade do |t|
+    t.datetime "added_at"
+    t.bigint "added_by_id"
+    t.datetime "created_at", null: false
+    t.boolean "featured"
+    t.text "notes"
+    t.integer "position"
+    t.bigint "product_collection_id", null: false
+    t.bigint "product_id", null: false
+    t.datetime "updated_at", null: false
+    t.index ["added_by_id"], name: "index_product_collection_items_on_added_by_id"
+    t.index ["product_collection_id"], name: "index_product_collection_items_on_product_collection_id"
+    t.index ["product_id"], name: "index_product_collection_items_on_product_id"
+  end
+
+  create_table "product_collections", force: :cascade do |t|
+    t.boolean "active"
+    t.integer "collection_type"
+    t.string "color"
+    t.datetime "created_at", null: false
+    t.text "description"
+    t.string "display_template"
+    t.date "end_date"
+    t.boolean "featured"
+    t.string "icon"
+    t.boolean "is_dynamic"
+    t.text "meta_description"
+    t.string "meta_title"
+    t.string "name"
+    t.bigint "parent_collection_id"
+    t.integer "position"
+    t.integer "product_count"
+    t.jsonb "rules"
+    t.string "short_description"
+    t.string "slug"
+    t.date "start_date"
+    t.datetime "updated_at", null: false
+    t.integer "visibility"
+    t.index ["slug"], name: "index_product_collections_on_slug", unique: true
+  end
+
   create_table "product_instances", force: :cascade do |t|
     t.string "asset_tag"
     t.integer "condition", default: 0
@@ -987,6 +1234,25 @@ ActiveRecord::Schema[8.1].define(version: 2026_02_25_223317) do
     t.index ["user_id"], name: "index_sales_tasks_on_user_id"
   end
 
+  create_table "service_agreements", force: :cascade do |t|
+    t.boolean "active"
+    t.integer "agreement_type"
+    t.boolean "auto_renew"
+    t.bigint "client_id", null: false
+    t.datetime "created_at", null: false
+    t.decimal "discount_percentage"
+    t.date "end_date"
+    t.integer "minimum_commitment_cents"
+    t.string "minimum_commitment_currency"
+    t.string "name"
+    t.text "notes"
+    t.integer "payment_schedule"
+    t.integer "renewal_type"
+    t.date "start_date"
+    t.datetime "updated_at", null: false
+    t.index ["client_id"], name: "index_service_agreements_on_client_id"
+  end
+
   create_table "staff_applications", force: :cascade do |t|
     t.datetime "applied_at"
     t.datetime "created_at", null: false
@@ -1032,6 +1298,31 @@ ActiveRecord::Schema[8.1].define(version: 2026_02_25_223317) do
     t.datetime "updated_at", null: false
     t.index ["booking_id"], name: "index_staff_roles_on_booking_id"
     t.index ["instance_id"], name: "index_staff_roles_on_instance_id"
+  end
+
+  create_table "tax_rates", force: :cascade do |t|
+    t.boolean "active"
+    t.boolean "applies_to_deposits"
+    t.boolean "applies_to_shipping"
+    t.integer "calculation_method"
+    t.string "city"
+    t.boolean "compound"
+    t.string "country"
+    t.datetime "created_at", null: false
+    t.date "end_date"
+    t.integer "maximum_amount_cents"
+    t.integer "minimum_amount_cents"
+    t.string "name"
+    t.integer "position"
+    t.decimal "rate"
+    t.integer "rate_cents"
+    t.date "start_date"
+    t.string "state"
+    t.string "tax_code"
+    t.integer "tax_type"
+    t.datetime "updated_at", null: false
+    t.string "zip_code_pattern"
+    t.index ["tax_code"], name: "index_tax_rates_on_tax_code", unique: true
   end
 
   create_table "user_certifications", force: :cascade do |t|
@@ -1163,12 +1454,25 @@ ActiveRecord::Schema[8.1].define(version: 2026_02_25_223317) do
   add_foreign_key "bookings", "users", column: "quote_approved_by_id", on_delete: :nullify
   add_foreign_key "business_entities", "clients"
   add_foreign_key "business_entities", "instances"
+  add_foreign_key "client_communications", "clients"
+  add_foreign_key "client_communications", "contacts"
+  add_foreign_key "client_communications", "users"
+  add_foreign_key "client_metrics", "clients"
+  add_foreign_key "client_surveys", "bookings"
+  add_foreign_key "client_surveys", "clients"
+  add_foreign_key "client_taggings", "client_tags"
+  add_foreign_key "client_taggings", "clients"
+  add_foreign_key "client_users", "clients"
+  add_foreign_key "client_users", "contacts"
   add_foreign_key "clients", "instances"
+  add_foreign_key "collection_views", "product_collections"
+  add_foreign_key "collection_views", "users"
   add_foreign_key "comment_upvotes", "comments"
   add_foreign_key "comment_upvotes", "users"
   add_foreign_key "comments", "comments", column: "parent_comment_id"
   add_foreign_key "comments", "instances"
   add_foreign_key "comments", "users"
+  add_foreign_key "contacts", "clients"
   add_foreign_key "contract_signatures", "contracts"
   add_foreign_key "contract_signatures", "users"
   add_foreign_key "contracts", "bookings"
@@ -1213,6 +1517,9 @@ ActiveRecord::Schema[8.1].define(version: 2026_02_25_223317) do
   add_foreign_key "product_bundle_items", "product_bundles"
   add_foreign_key "product_bundle_items", "products"
   add_foreign_key "product_bundles", "instances"
+  add_foreign_key "product_collection_items", "product_collections"
+  add_foreign_key "product_collection_items", "products"
+  add_foreign_key "product_collection_items", "users", column: "added_by_id"
   add_foreign_key "product_instances", "locations", column: "current_location_id"
   add_foreign_key "product_instances", "products"
   add_foreign_key "product_metrics", "products"
@@ -1227,6 +1534,7 @@ ActiveRecord::Schema[8.1].define(version: 2026_02_25_223317) do
   add_foreign_key "sales_tasks", "clients"
   add_foreign_key "sales_tasks", "instances"
   add_foreign_key "sales_tasks", "users"
+  add_foreign_key "service_agreements", "clients"
   add_foreign_key "staff_applications", "staff_roles"
   add_foreign_key "staff_applications", "users"
   add_foreign_key "staff_applications", "users", column: "reviewer_id"

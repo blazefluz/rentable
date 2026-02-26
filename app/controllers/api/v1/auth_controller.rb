@@ -2,9 +2,11 @@
 module Api
   module V1
     class AuthController < ApplicationController
-      # No need to skip - ApplicationController already skips authenticate_user! by default
-      # But we need to enable it for protected endpoints
-      before_action :authenticate_user!, only: [:me, :refresh]
+      # Allow public access to login and register
+      skip_before_action :authenticate_user!, only: [:login, :register]
+
+      # Require authentication for protected endpoints (me, refresh)
+      # This is now automatically enforced by ApplicationController
 
       # POST /api/v1/auth/register
       def register

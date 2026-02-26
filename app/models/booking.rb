@@ -21,6 +21,9 @@ class Booking < ApplicationRecord
   belongs_to :cancelled_by, class_name: "User", optional: true
   belongs_to :quote_approved_by, class_name: "User", optional: true
   belongs_to :recurring_booking, optional: true
+  belongs_to :lead, optional: true
+  belongs_to :default_tax_rate, class_name: "TaxRate", optional: true
+  belongs_to :tax_override_by, class_name: "User", optional: true
 
   # Nested attributes
   accepts_nested_attributes_for :booking_line_items, allow_destroy: true
@@ -29,6 +32,10 @@ class Booking < ApplicationRecord
   monetize :total_price_cents, as: :total_price, with_model_currency: :total_price_currency
   monetize :security_deposit_cents, as: :security_deposit, with_model_currency: :security_deposit_currency, allow_nil: true
   monetize :refund_amount_cents, as: :refund_amount, with_model_currency: :refund_amount_currency, allow_nil: true
+  monetize :subtotal_cents, as: :subtotal, with_model_currency: :subtotal_currency, allow_nil: true
+  monetize :tax_total_cents, as: :tax_total, with_model_currency: :tax_total_currency, allow_nil: true
+  monetize :grand_total_cents, as: :grand_total, with_model_currency: :grand_total_currency, allow_nil: true
+  monetize :tax_override_amount_cents, as: :tax_override_amount, with_model_currency: :tax_total_currency, allow_nil: true
 
   # Enums
   enum :status, {
@@ -390,6 +397,137 @@ class Booking < ApplicationRecord
     !cancellation_policy_no_refund? && !past_cancellation_deadline?
   end
 
+  # ============================================================================
+  # TAX CALCULATIONS (Public methods)
+  # ============================================================================
+
+  def calculate_total_price
+    return unless booking_line_items.any?
+
+    currency = booking_line_items.first&.price_currency || "USD"
+
+    # Calculate subtotal (before tax)
+    self.subtotal_cents = booking_line_items.sum do |item|
+      item.line_total.cents
+    end
+    self.subtotal_currency = currency
+
+    # Calculate taxes
+    calculate_taxes
+
+    # Grand total = subtotal + tax
+    self.grand_total_cents = subtotal_cents.to_i + tax_total_cents.to_i
+    self.grand_total_currency = currency
+
+    # For backward compatibility, set total_price to grand_total
+    self.total_price_cents = grand_total_cents
+    self.total_price_currency = currency
+  end
+
+  def calculate_taxes
+    return unless booking_line_items.any?
+
+    currency = booking_line_items.first&.price_currency || "USD"
+
+    # Check if tax override is applied
+    if tax_override?
+      self.tax_total_cents = tax_override_amount_cents.to_i
+      self.tax_total_currency = currency
+      return
+    end
+
+    # Check if tax exempt
+    if tax_exempt?
+      self.tax_total_cents = 0
+      self.tax_total_currency = currency
+      return
+    end
+
+    # Calculate tax based on line items
+    # First, calculate tax per line item
+    booking_line_items.each do |item|
+      item.calculate_tax
+    end
+
+    # Sum up all line item taxes
+    self.tax_total_cents = booking_line_items.sum do |item|
+      item.tax_amount_cents.to_i
+    end
+    self.tax_total_currency = currency
+  end
+
+  # Get applicable tax rates for this booking's location
+  def applicable_tax_rates
+    return [] unless venue_location
+
+    TaxRate.for_location(
+      country: venue_location.country || 'US',
+      state: venue_location.state,
+      city: venue_location.city,
+      zip: venue_location.postal_code
+    )
+  end
+
+  # Mark booking as tax exempt
+  def mark_tax_exempt!(reason:, certificate: nil)
+    update!(
+      tax_exempt: true,
+      tax_exempt_reason: reason,
+      tax_exempt_certificate: certificate
+    )
+    calculate_total_price
+  end
+
+  # Override tax amount manually
+  def override_tax!(amount:, reason:, user:)
+    update!(
+      tax_override: true,
+      tax_override_amount_cents: amount.cents,
+      tax_override_reason: reason,
+      tax_override_by: user
+    )
+    calculate_total_price
+  end
+
+  # Check if reverse charge VAT applies (EU B2B)
+  def apply_reverse_charge?
+    return false unless venue_location&.country.present?
+    return false unless client&.business_entities&.any?
+
+    # Only for EU/UK VAT
+    return false unless venue_location.country.in?(['GB', 'DE', 'FR', 'IT', 'ES', 'NL', 'BE', 'AT', 'SE', 'DK', 'FI', 'IE', 'PT', 'GR', 'PL', 'CZ', 'HU', 'RO', 'BG', 'HR', 'SK', 'SI', 'LT', 'LV', 'EE', 'CY', 'MT', 'LU'])
+
+    # Check if client has valid VAT number
+    client_vat = client.business_entities.first&.tax_id
+    return false unless client_vat.present?
+
+    # Extract country code from VAT number (first 2 letters)
+    client_country = client_vat[0..1]
+
+    # Reverse charge applies if different EU countries
+    client_country != venue_location.country
+  end
+
+  # Tax breakdown for display/reporting
+  def tax_breakdown
+    {
+      subtotal: subtotal,
+      tax_total: tax_total,
+      grand_total: grand_total,
+      tax_exempt: tax_exempt?,
+      tax_override: tax_override?,
+      reverse_charge: reverse_charge_applied?,
+      line_items: booking_line_items.map do |item|
+        {
+          bookable: item.bookable&.name,
+          line_total: item.line_total,
+          tax_amount: item.tax_amount,
+          tax_rate: item.tax_rate&.display_name
+        }
+      end
+    }
+  end
+
   private
 
   def determine_refund_percentage(hours_before)
@@ -438,19 +576,6 @@ class Booking < ApplicationRecord
 
   def generate_quote_number
     "QT#{Time.current.strftime('%Y%m%d')}#{SecureRandom.hex(4).upcase}"
-  end
-
-  def calculate_total_price
-    return unless booking_line_items.any?
-
-    currency = booking_line_items.first&.price_currency || "USD"
-
-    # Use sophisticated line_total calculation which handles dynamic pricing
-    total = booking_line_items.sum do |item|
-      item.line_total
-    end
-
-    self.total_price = total
   end
 
   def availability_on_create

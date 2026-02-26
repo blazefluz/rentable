@@ -28,6 +28,8 @@ class Product < ApplicationRecord
   has_many :parent_products, through: :parent_product_accessories, source: :product
   has_many :product_bundle_items, dependent: :destroy
   has_many :product_bundles, through: :product_bundle_items
+  has_many :product_collection_items, dependent: :destroy
+  has_many :product_collections, through: :product_collection_items
 
   belongs_to :product_type, optional: true
   belongs_to :storage_location, class_name: "Location", optional: true

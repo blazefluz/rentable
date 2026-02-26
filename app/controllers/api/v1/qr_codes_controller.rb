@@ -1,5 +1,7 @@
 class Api::V1::QrCodesController < ApplicationController
-  skip_before_action :verify_authenticity_token, only: [:generate]
+  # QR code generation requires authentication for security
+  # Only authenticated users can generate QR codes for products, locations, etc.
+  skip_before_action :verify_authenticity_token
 
   # GET /api/v1/qr_codes/generate
   # Generate QR code for any data (barcode, serial number, URL, etc.)
