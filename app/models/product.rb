@@ -5,6 +5,9 @@ class Product < ApplicationRecord
   # Audit trail
   has_paper_trail
 
+  # Tenant association
+  belongs_to :company, optional: true
+
   # Associations
   has_many :kit_items, dependent: :destroy
   has_many :kits, through: :kit_items

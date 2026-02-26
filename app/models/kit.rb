@@ -2,6 +2,9 @@
 class Kit < ApplicationRecord
   include ActsAsTenant
 
+  # Tenant association
+  belongs_to :company, optional: true
+
   # Associations
   has_many :kit_items, dependent: :destroy
   has_many :products, through: :kit_items

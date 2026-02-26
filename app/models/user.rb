@@ -3,7 +3,7 @@ class User < ApplicationRecord
   has_secure_password
 
   # Associations
-  belongs_to :instance, optional: true
+  belongs_to :company, optional: true
   belongs_to :permission_group, optional: true
   has_many :managed_bookings, class_name: "Booking", foreign_key: :manager_id, dependent: :nullify
   has_many :booking_comments, dependent: :destroy

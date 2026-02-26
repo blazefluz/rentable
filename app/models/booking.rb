@@ -5,6 +5,9 @@ class Booking < ApplicationRecord
   # Audit trail
   has_paper_trail
 
+  # Tenant association
+  belongs_to :company, optional: true
+
   # Associations
   has_many :booking_line_items, dependent: :destroy
   has_many :products, through: :booking_line_items, source: :bookable, source_type: "Product"
@@ -13,9 +16,11 @@ class Booking < ApplicationRecord
   has_many :booking_comments, dependent: :destroy
   has_many :damage_reports, dependent: :destroy
   has_many :contracts, dependent: :destroy
+  has_one :payment_plan, dependent: :destroy
   has_many_attached :attachments
 
   belongs_to :client, optional: true
+  belongs_to :collection_assigned_to, class_name: "User", optional: true
   belongs_to :manager, class_name: "User", optional: true
   belongs_to :venue_location, class_name: "Location", optional: true
   belongs_to :cancelled_by, class_name: "User", optional: true
@@ -81,6 +86,25 @@ class Booking < ApplicationRecord
     quote_expired: 5
   }, prefix: true
 
+  enum :aging_bucket, {
+    current: 0,           # Not yet due or paid
+    days_0_30: 1,         # 1-30 days past due
+    days_31_60: 2,        # 31-60 days past due
+    days_61_90: 3,        # 61-90 days past due
+    days_90_plus: 4       # 90+ days past due
+  }, prefix: true
+
+  enum :collection_status, {
+    current_status: 0,     # No collection needed
+    reminder_sent: 1,      # Friendly reminder sent
+    first_notice: 2,       # First overdue notice
+    second_notice: 3,      # Second overdue notice
+    final_notice: 4,       # Final notice before collections
+    in_collections: 5,     # Sent to collections agency
+    payment_plan: 6,       # On payment plan
+    written_off: 7         # Bad debt written off
+  }, prefix: true
+
   # Validations
   validates :start_date, :end_date, :customer_name, :customer_email, presence: true
   validates :customer_email, format: { with: URI::MailTo::EMAIL_REGEXP }
@@ -106,6 +130,17 @@ class Booking < ApplicationRecord
   scope :active_quotes, -> { quotes.where(quote_status: [:quote_draft, :quote_sent, :quote_viewed]) }
   scope :expired_quotes, -> { quotes.where('quote_expires_at < ?', Time.current) }
   scope :pending_quotes, -> { quotes.where(quote_status: [:quote_sent, :quote_viewed]) }
+
+  # AR Scopes
+  scope :with_balance_due, -> { where('total_price_cents > (SELECT COALESCE(SUM(amount_cents), 0) FROM payments WHERE booking_id = bookings.id AND payment_type = 1)') }
+  scope :overdue, -> { with_balance_due.where('payment_due_date < ?', Date.today) }
+  scope :current_ar, -> { with_balance_due.where(aging_bucket: :current) }
+  scope :aged_0_30, -> { with_balance_due.where(aging_bucket: :days_0_30) }
+  scope :aged_31_60, -> { with_balance_due.where(aging_bucket: :days_31_60) }
+  scope :aged_61_90, -> { with_balance_due.where(aging_bucket: :days_61_90) }
+  scope :aged_90_plus, -> { with_balance_due.where(aging_bucket: :days_90_plus) }
+  scope :needs_reminder, -> { overdue.where('last_payment_reminder_sent_at IS NULL OR last_payment_reminder_sent_at < ?', 7.days.ago) }
+  scope :in_collections_status, -> { where(collection_status: [:in_collections, :payment_plan, :written_off]) }
 
   # Calculate number of rental days
   def rental_days
@@ -140,6 +175,164 @@ class Booking < ApplicationRecord
   # Check if fully paid
   def fully_paid?
     balance_due <= 0
+  end
+
+  # AR/Collections Methods
+
+  # Calculate payment due date (default: net 30 days after end_date)
+  def calculate_payment_due_date
+    return nil unless end_date
+    payment_terms = client&.payment_terms_days || 30
+    end_date + payment_terms.days
+  end
+
+  # Set payment due date if not already set
+  def set_payment_due_date!
+    return if payment_due_date.present?
+    self.payment_due_date = calculate_payment_due_date
+    save!
+  end
+
+  # Calculate days past due
+  def calculate_days_past_due
+    return 0 if fully_paid?
+    return 0 if payment_due_date.nil?
+    return 0 if Date.today <= payment_due_date
+    (Date.today - payment_due_date).to_i
+  end
+
+  # Update days_past_due field
+  def update_days_past_due!
+    self.days_past_due = calculate_days_past_due
+    save!
+  end
+
+  # Calculate aging bucket
+  def calculate_aging_bucket
+    return :current if fully_paid? || days_past_due <= 0
+    return :days_0_30 if days_past_due <= 30
+    return :days_31_60 if days_past_due <= 60
+    return :days_61_90 if days_past_due <= 90
+    :days_90_plus
+  end
+
+  # Update aging bucket field
+  def update_aging_bucket!
+    self.aging_bucket = calculate_aging_bucket
+    save!
+  end
+
+  # Check if payment is overdue
+  def payment_overdue?
+    return false if fully_paid?
+    return false if payment_due_date.nil?
+    Date.today > payment_due_date
+  end
+
+  # Collection rate based on aging
+  # Industry standard: 90% at 0-30, 75% at 31-60, 60% at 61-90, 25% at 90+
+  def expected_collection_rate
+    case aging_bucket&.to_sym
+    when :current then 1.0
+    when :days_0_30 then 0.90
+    when :days_31_60 then 0.75
+    when :days_61_90 then 0.60
+    when :days_90_plus then 0.25
+    else 0.0
+    end
+  end
+
+  # Expected collectible amount
+  def expected_collectible_amount
+    Money.new((balance_due * expected_collection_rate).to_i, total_price_currency)
+  end
+
+  # Update all AR metrics at once
+  def update_ar_metrics!
+    set_payment_due_date! if payment_due_date.nil?
+    self.days_past_due = calculate_days_past_due
+    self.aging_bucket = calculate_aging_bucket
+    save!
+  end
+
+  # Escalate collection status based on aging
+  def escalate_collection_status!
+    return if fully_paid?
+
+    case days_past_due
+    when 0..6
+      update!(collection_status: :current_status) if collection_status_current_status?
+    when 7..13
+      update!(collection_status: :reminder_sent) if payment_reminder_count == 0
+    when 14..29
+      update!(collection_status: :first_notice) if !collection_status_first_notice? && !collection_status_second_notice?
+    when 30..59
+      update!(collection_status: :second_notice) if !collection_status_second_notice? && !collection_status_final_notice?
+    when 60..89
+      update!(collection_status: :final_notice) if !collection_status_final_notice? && !collection_status_in_collections?
+    else
+      update!(collection_status: :in_collections) if !collection_status_in_collections? && !collection_status_written_off?
+    end
+  end
+
+  # Send payment reminder and track it
+  def send_payment_reminder!(reminder_type: :friendly)
+    return if fully_paid?
+
+    # Send email (integrate with BookingMailer)
+    # BookingMailer.payment_reminder(self, reminder_type).deliver_later
+
+    update!(
+      last_payment_reminder_sent_at: Time.current,
+      payment_reminder_count: payment_reminder_count.to_i + 1
+    )
+
+    escalate_collection_status!
+  end
+
+  # Assign to collections
+  def assign_to_collections!(user, notes: nil)
+    update!(
+      collection_status: :in_collections,
+      collection_assigned_to: user,
+      collection_notes: notes
+    )
+  end
+
+  # Write off as bad debt
+  def write_off_bad_debt!(reason:, user:)
+    update!(
+      collection_status: :written_off,
+      collection_notes: "Written off by #{user.email}: #{reason}\nBalance: #{Money.new(balance_due, total_price_currency).format}"
+    )
+  end
+
+  # Class methods for AR aging report
+  def self.ar_aging_summary(currency: 'USD')
+    {
+      current: aged_summary(:current, currency),
+      days_0_30: aged_summary(:days_0_30, currency),
+      days_31_60: aged_summary(:days_31_60, currency),
+      days_61_90: aged_summary(:days_61_90, currency),
+      days_90_plus: aged_summary(:days_90_plus, currency),
+      total: total_ar_summary(currency)
+    }
+  end
+
+  def self.aged_summary(bucket, currency)
+    bookings = with_balance_due.where(aging_bucket: Booking.aging_buckets[bucket])
+    {
+      count: bookings.count,
+      balance: Money.new(bookings.sum('total_price_cents - (SELECT COALESCE(SUM(amount_cents), 0) FROM payments WHERE booking_id = bookings.id AND payment_type = 1)'), currency)
+    }
+  end
+
+  def self.total_ar_summary(currency)
+    bookings = with_balance_due
+    {
+      count: bookings.count,
+      balance: Money.new(bookings.sum('total_price_cents - (SELECT COALESCE(SUM(amount_cents), 0) FROM payments WHERE booking_id = bookings.id AND payment_type = 1)'), currency)
+    }
   end
 
   # Damage and security deposit methods

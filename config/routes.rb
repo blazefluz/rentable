@@ -7,6 +7,17 @@ Rails.application.routes.draw do
   # API Routes
   namespace :api do
     namespace :v1 do
+      # Company Management (Public)
+      post 'companies/signup', to: 'companies#signup'
+      post 'companies', to: 'companies#create'
+      get 'companies/check_subdomain', to: 'companies#check_subdomain'
+
+      # Company Management (Authenticated)
+      get 'companies/current', to: 'companies#show'
+      patch 'companies/current', to: 'companies#update'
+      get 'companies/settings', to: 'companies#settings'
+      patch 'companies/branding', to: 'companies#branding'
+
       # Authentication
       post 'auth/register', to: 'auth#register'
       post 'auth/login', to: 'auth#login'

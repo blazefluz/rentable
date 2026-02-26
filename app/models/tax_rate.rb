@@ -1,4 +1,10 @@
 class TaxRate < ApplicationRecord
+  include ActsAsTenant
+  acts_as_tenant(:company)
+
+  # Tenant association
+  belongs_to :company, optional: true
+
   # Enums
   enum :tax_type, {
     sales_tax: 0,      # US state/local sales tax

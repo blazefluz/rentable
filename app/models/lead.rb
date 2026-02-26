@@ -1,4 +1,10 @@
 class Lead < ApplicationRecord
+  include ActsAsTenant
+  acts_as_tenant(:company)
+
+  # Tenant association
+  belongs_to :company, optional: true
+
   # Associations
   belongs_to :assigned_to, class_name: 'User', foreign_key: 'assigned_to_id', optional: true
   belongs_to :converted_to_client, class_name: 'Client', foreign_key: 'converted_to_client_id', optional: true

@@ -31,11 +31,11 @@ module Rentable
     # Common ones are `templates`, `generators`, or `middleware`, for example.
     config.autoload_lib(ignore: %w[assets tasks])
 
-    # Load tenant middleware
-    require_relative '../lib/tenant_middleware'
+    # Multi-tenant configuration
+    config.base_domain = ENV.fetch('BASE_DOMAIN', 'localhost')
 
-    # Multi-tenant middleware - must be early in the stack
-    config.middleware.use TenantMiddleware
+    # Tenant middleware will be enabled after migrations
+    # config.middleware.use TenantMiddleware
 
     # Configuration for the application, engines, and railties goes here.
     #

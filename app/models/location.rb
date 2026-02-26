@@ -1,6 +1,9 @@
 class Location < ApplicationRecord
   include ActsAsTenant
 
+  # Tenant association
+  belongs_to :company, optional: true
+
   # Associations
   belongs_to :client, optional: true
   belongs_to :parent, class_name: "Location", optional: true

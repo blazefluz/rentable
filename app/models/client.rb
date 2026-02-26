@@ -4,6 +4,9 @@ class Client < ApplicationRecord
   # Audit trail
   has_paper_trail
 
+  # Tenant association
+  belongs_to :company, optional: true
+
   # Associations
   has_many :bookings, dependent: :nullify
   has_many :locations, dependent: :destroy
