@@ -342,6 +342,7 @@ module Api
           },
           mass: product.mass,
           quantity: product.quantity,
+          available_quantity: product.quantity, # Total quantity, use availability endpoint for date-specific checks
           active: product.active,
           archived: product.archived,
           show_public: product.show_public,

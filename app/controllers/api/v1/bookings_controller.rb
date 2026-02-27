@@ -296,6 +296,22 @@ module Api
             currency: booking.total_price_currency,
             formatted: booking.total_price.format
           },
+          subtotal: booking.subtotal ? {
+            amount: booking.subtotal.cents,
+            currency: booking.subtotal.currency.to_s,
+            formatted: booking.subtotal.format
+          } : nil,
+          tax_total: booking.tax_total ? {
+            amount: booking.tax_total.cents,
+            currency: booking.tax_total.currency.to_s,
+            formatted: booking.tax_total.format
+          } : nil,
+          grand_total: booking.grand_total ? {
+            amount: booking.grand_total.cents,
+            currency: booking.grand_total.currency.to_s,
+            formatted: booking.grand_total.format
+          } : nil,
+          tax_exempt: booking.tax_exempt?,
           total_paid: booking.total_payments_received,
           balance_due: booking.balance_due,
           fully_paid: booking.fully_paid?,
@@ -311,6 +327,14 @@ module Api
         booking_json(booking).merge({
           notes: booking.notes,
           invoice_notes: booking.invoice_notes,
+          quote_expires_at: booking.quote_expires_at,
+          quote_valid_days: booking.quote_valid_days,
+          security_deposit: booking.security_deposit_cents ? {
+            amount: booking.security_deposit_cents,
+            currency: booking.security_deposit_currency,
+            formatted: booking.security_deposit.format
+          } : nil,
+          security_deposit_status: booking.security_deposit_status,
           line_items: booking.booking_line_items.active.map do |item|
             bookable = item.bookable
 
@@ -355,6 +379,8 @@ module Api
               workflow_status: item.workflow_status,
               discount_percent: item.discount_percent,
               comment: item.comment,
+              available_quantity: bookable.respond_to?(:available_quantity) ? bookable.available_quantity(booking.start_date, booking.end_date) : bookable.quantity,
+              total_quantity: bookable.quantity,
               price_per_day: {
                 amount: item.price_cents,
                 currency: item.price_currency,
@@ -369,6 +395,22 @@ module Api
                 amount: item.line_total.cents,
                 currency: item.line_total.currency.to_s,
                 formatted: item.line_total.format
+              },
+              tax: {
+                taxable: item.taxable?,
+                tax_rate_id: item.tax_rate_id,
+                tax_rate_name: item.tax_rate&.name,
+                tax_rate_percentage: item.tax_rate&.display_rate,
+                tax_amount: item.tax_amount ? {
+                  amount: item.tax_amount.cents,
+                  currency: item.tax_amount.currency.to_s,
+                  formatted: item.tax_amount.format
+                } : nil,
+                line_total_with_tax: item.line_total_with_tax ? {
+                  amount: item.line_total_with_tax.cents,
+                  currency: item.line_total_with_tax.currency.to_s,
+                  formatted: item.line_total_with_tax.format
+                } : nil
               }
             }
           end,

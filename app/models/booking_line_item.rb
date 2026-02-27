@@ -176,7 +176,8 @@ class BookingLineItem < ApplicationRecord
             booking.end_date,
             quantity
           )
-          Money.new((calculated_price * 100).to_i, price_currency)
+          # calculate_rental_price already returns cents, not dollars
+          Money.new(calculated_price.to_i, price_currency)
         else
           price * quantity * days
         end
@@ -188,7 +189,8 @@ class BookingLineItem < ApplicationRecord
         booking.end_date,
         quantity
       )
-      Money.new((calculated_price * 100).to_i, price_currency)
+      # calculate_rental_price already returns cents, not dollars
+      Money.new(calculated_price.to_i, price_currency)
     else
       # Final fallback
       price * quantity * days

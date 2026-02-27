@@ -116,6 +116,7 @@ class Booking < ApplicationRecord
   # Callbacks
   before_validation :generate_reference_number, on: :create
   before_validation :calculate_total_price
+  after_commit :update_line_item_days, if: :saved_change_to_start_date_or_end_date?
 
   # Scopes
   scope :active, -> { where.not(status: [:cancelled]).where(deleted: false) }
@@ -759,6 +760,15 @@ class Booking < ApplicationRecord
   end
 
   private
+
+  def saved_change_to_start_date_or_end_date?
+    saved_change_to_start_date? || saved_change_to_end_date?
+  end
+
+  def update_line_item_days
+    # Update all line items to use the new rental_days value
+    booking_line_items.update_all(days: rental_days)
+  end
 
   def determine_refund_percentage(hours_before)
     return cancellation_fee_percentage if cancellation_policy_custom?
