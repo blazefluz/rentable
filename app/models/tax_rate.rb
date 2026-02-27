@@ -5,6 +5,10 @@ class TaxRate < ApplicationRecord
   # Tenant association
   belongs_to :company, optional: true
 
+  # Component relationships (for composite taxes)
+  belongs_to :parent_tax_rate, class_name: 'TaxRate', optional: true
+  has_many :component_tax_rates, class_name: 'TaxRate', foreign_key: :parent_tax_rate_id, dependent: :nullify
+
   # Enums
   enum :tax_type, {
     sales_tax: 0,      # US state/local sales tax
@@ -20,6 +24,15 @@ class TaxRate < ApplicationRecord
     percentage: 0,     # % of subtotal
     flat_fee: 1,       # Fixed amount
     tiered: 2          # Based on price brackets
+  }, prefix: true
+
+  enum :component_type, {
+    composite: 0,      # Parent tax (sum of components)
+    state_tax: 1,      # State-level tax
+    county_tax: 2,     # County-level tax
+    city_tax: 3,       # City-level tax
+    district_tax: 4,   # Special district tax
+    federal_tax: 5     # Federal tax
   }, prefix: true
 
   # Monetize
@@ -41,6 +54,9 @@ class TaxRate < ApplicationRecord
   scope :by_state, ->(state) { where('state IS NULL OR state = ?', state) }
   scope :by_city, ->(city) { where('city IS NULL OR city = ?', city) }
   scope :ordered, -> { order(:position, :name) }
+  scope :composite_rates, -> { where(component_type: :composite) }
+  scope :component_rates, -> { where.not(component_type: :composite) }
+  scope :top_level, -> { where(parent_tax_rate_id: nil) }
 
   # Class methods
   def self.for_location(country:, state: nil, city: nil, zip: nil)
@@ -109,6 +125,63 @@ class TaxRate < ApplicationRecord
 
   def upcoming?
     start_date.present? && start_date > Date.today
+  end
+
+  # Check if this is a composite tax (parent with components)
+  def composite?
+    component_type_composite?
+  end
+
+  # Calculate total tax including all components
+  def calculate_total_with_components(amount_cents, currency = 'USD')
+    if composite? && component_tax_rates.any?
+      # Sum all component taxes
+      component_tax_rates.sum { |component| component.calculate_tax(amount_cents, currency) }
+    else
+      # Simple tax calculation
+      calculate_tax(amount_cents, currency)
+    end
+  end
+
+  # Get breakdown of all tax components
+  def tax_breakdown(amount_cents, currency = 'USD')
+    if composite? && component_tax_rates.any?
+      components = component_tax_rates.map do |component|
+        {
+          name: component.name,
+          type: component.component_type,
+          rate: component.display_rate,
+          amount_cents: component.calculate_tax(amount_cents, currency),
+          amount: Money.new(component.calculate_tax(amount_cents, currency), currency)
+        }
+      end
+
+      total_cents = components.sum { |c| c[:amount_cents] }
+
+      {
+        composite: true,
+        total_cents: total_cents,
+        total: Money.new(total_cents, currency),
+        components: components
+      }
+    else
+      # Simple tax - no breakdown needed
+      tax_amount = calculate_tax(amount_cents, currency)
+      {
+        composite: false,
+        total_cents: tax_amount,
+        total: Money.new(tax_amount, currency),
+        components: [
+          {
+            name: name,
+            type: component_type,
+            rate: display_rate,
+            amount_cents: tax_amount,
+            amount: Money.new(tax_amount, currency)
+          }
+        ]
+      }
+    end
   end
 
   private

@@ -103,6 +103,4 @@ module SetCurrentTenant
   def current_company
     @current_company ||= ActsAsTenant.current_tenant
   end
-
-  helper_method :current_company
 end

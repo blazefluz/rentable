@@ -115,6 +115,8 @@ class BookingLineItem < ApplicationRecord
   # Callbacks
   before_validation :set_price_from_bookable
   before_validation :set_days_from_booking
+  after_create :handle_stock_for_sale_items
+  after_destroy :restore_stock_for_sale_items
 
   # Calculate line total (with discount applied)
   # Uses dynamic pricing if bookable supports it
@@ -126,10 +128,28 @@ class BookingLineItem < ApplicationRecord
 
   # Calculate line total without discount
   # Uses sophisticated pricing calculation if available
+  # Handles different item types (rental/sale/service)
   def line_subtotal
     if use_dynamic_pricing?
       calculate_dynamic_price
     else
+      calculate_simple_price
+    end
+  end
+
+  # Simple price calculation based on item type
+  def calculate_simple_price
+    if bookable.respond_to?(:item_type)
+      case bookable.item_type.to_sym
+      when :sale, :service
+        # Sale items and services: no day multiplier
+        price * quantity
+      else
+        # Rental items: multiply by days
+        price * quantity * days
+      end
+    else
+      # Legacy: assume rental
       price * quantity * days
     end
   end
@@ -138,18 +158,39 @@ class BookingLineItem < ApplicationRecord
   def calculate_dynamic_price
     return Money.new(0, price_currency) unless bookable && booking
 
-    if bookable.respond_to?(:calculate_rental_price)
-      # Use Product's sophisticated pricing calculation
+    # Check item type first
+    if bookable.respond_to?(:item_type)
+      case bookable.item_type.to_sym
+      when :sale
+        # Sale items: use sale_price, no day multiplier
+        sale_price = bookable.respond_to?(:sale_price) ? bookable.sale_price : price
+        sale_price * quantity
+      when :service
+        # Services: flat fee, no day multiplier
+        price * quantity
+      else
+        # Rental items: use sophisticated pricing if available
+        if bookable.respond_to?(:calculate_rental_price)
+          calculated_price = bookable.calculate_rental_price(
+            booking.start_date,
+            booking.end_date,
+            quantity
+          )
+          Money.new((calculated_price * 100).to_i, price_currency)
+        else
+          price * quantity * days
+        end
+      end
+    elsif bookable.respond_to?(:calculate_rental_price)
+      # Legacy: use rental price calculation
       calculated_price = bookable.calculate_rental_price(
         booking.start_date,
         booking.end_date,
         quantity
       )
-
-      # Convert to Money object
       Money.new((calculated_price * 100).to_i, price_currency)
     else
-      # Fallback to simple calculation
+      # Final fallback
       price * quantity * days
     end
   end
@@ -787,5 +828,25 @@ class BookingLineItem < ApplicationRecord
   def set_days_from_booking
     return unless booking
     self.days = booking.rental_days
+  end
+
+  # Stock management for sale items
+  def handle_stock_for_sale_items
+    return unless bookable.respond_to?(:item_type) && bookable.item_type_sale?
+    return unless booking&.status_confirmed?
+
+    begin
+      bookable.decrement_stock!(quantity)
+    rescue ActiveRecord::RecordInvalid => e
+      errors.add(:base, "Cannot add to booking: #{e.message}")
+      raise ActiveRecord::Rollback
+    end
+  end
+
+  def restore_stock_for_sale_items
+    return unless bookable.respond_to?(:item_type) && bookable.item_type_sale?
+
+    # Restore stock when line item is removed
+    bookable.increment_stock!(quantity)
   end
 end

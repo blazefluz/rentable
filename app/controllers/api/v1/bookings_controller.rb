@@ -312,11 +312,44 @@ module Api
           notes: booking.notes,
           invoice_notes: booking.invoice_notes,
           line_items: booking.booking_line_items.active.map do |item|
+            bookable = item.bookable
+
+            # Handle both Product and ProductVariant
+            bookable_info = if bookable.is_a?(ProductVariant)
+              {
+                name: bookable.display_name,
+                product_id: bookable.product_id,
+                variant_id: bookable.id,
+                sku: bookable.sku,
+                options: bookable.option_hash
+              }
+            elsif bookable.is_a?(Product)
+              {
+                name: bookable.name,
+                product_id: bookable.id,
+                variant_id: nil,
+                sku: bookable.barcode,
+                options: {}
+              }
+            else
+              {
+                name: 'Unknown',
+                product_id: nil,
+                variant_id: nil,
+                sku: nil,
+                options: {}
+              }
+            end
+
             {
               id: item.id,
               bookable_type: item.bookable_type,
               bookable_id: item.bookable_id,
-              bookable_name: item.bookable.name,
+              bookable_name: bookable_info[:name],
+              bookable_sku: bookable_info[:sku],
+              product_id: bookable_info[:product_id],
+              variant_id: bookable_info[:variant_id],
+              variant_options: bookable_info[:options],
               quantity: item.quantity,
               days: item.days,
               workflow_status: item.workflow_status,

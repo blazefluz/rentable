@@ -1,7 +1,4 @@
-class ApplicationController < ActionController::Base
-  # Disable CSRF for API endpoints
-  skip_before_action :verify_authenticity_token, if: -> { request.format.json? }
-
+class ApplicationController < ActionController::API
   # Include authentication concern
   include Authenticatable
 

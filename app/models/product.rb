@@ -33,6 +33,7 @@ class Product < ApplicationRecord
   has_many :product_bundles, through: :product_bundle_items
   has_many :product_collection_items, dependent: :destroy
   has_many :product_collections, through: :product_collection_items
+  has_many :product_variants, dependent: :destroy
 
   belongs_to :product_type, optional: true
   belongs_to :storage_location, class_name: "Location", optional: true
@@ -47,8 +48,15 @@ class Product < ApplicationRecord
   monetize :replacement_cost_cents, as: :replacement_cost, with_model_currency: :replacement_cost_currency, allow_nil: true
   monetize :damage_waiver_price_cents, as: :damage_waiver_price, with_model_currency: :damage_waiver_price_currency, allow_nil: true
   monetize :late_fee_cents, as: :late_fee, with_model_currency: :late_fee_currency, allow_nil: true
+  monetize :sale_price_cents, as: :sale_price, with_model_currency: :sale_price_currency, allow_nil: true
 
   # Enums
+  enum :item_type, {
+    rental: 0,    # Items rented and returned (default)
+    sale: 1,      # Items sold/given away (inventory decreases)
+    service: 2    # Services (no physical inventory)
+  }, prefix: true
+
   enum :condition, {
     new_condition: 0,
     excellent: 1,
@@ -83,6 +91,12 @@ class Product < ApplicationRecord
   validates :daily_price_currency, inclusion: { in: %w[USD EUR GBP] }
   validates :weekly_price_currency, inclusion: { in: %w[USD EUR GBP] }
 
+  # Item type specific validations
+  validates :daily_price_cents, presence: true, if: :item_type_rental?
+  validates :sale_price_cents, presence: true, if: :item_type_sale?
+  validates :stock_on_hand, numericality: { greater_than_or_equal_to: 0, only_integer: true }, if: :tracks_inventory?
+  validate :price_present_for_item_type
+
   # Scopes
   scope :active, -> { where(active: true, archived: false, deleted: false) }
   scope :archived, -> { where(archived: true) }
@@ -114,6 +128,65 @@ class Product < ApplicationRecord
   scope :popular, -> { where("popularity_score > ?", 0).order(popularity_score: :desc) }
   scope :by_specification, ->(key, value) { where("specifications->? = ?", key, value.to_json) if key.present? && value.present? }
 
+  # Item type scopes
+  scope :rental_items, -> { where(item_type: :rental) }
+  scope :sale_items, -> { where(item_type: :sale) }
+  scope :services, -> { where(item_type: :service) }
+  scope :low_stock, -> { where('stock_on_hand <= reorder_point AND reorder_point IS NOT NULL').where(item_type: :sale) }
+  scope :out_of_stock, -> { where(stock_on_hand: 0, item_type: :sale) }
+  scope :in_stock, -> { where('stock_on_hand > 0', item_type: :sale) }
+  scope :with_variants, -> { where(has_variants: true) }
+  scope :without_variants, -> { where(has_variants: false) }
+
+  # Product Variant Methods
+  def enable_variants!
+    update!(has_variants: true)
+  end
+
+  def disable_variants!
+    return false if product_variants.any?
+    update!(has_variants: false)
+  end
+
+  def active_variants
+    product_variants.active
+  end
+
+  def in_stock_variants
+    product_variants.in_stock
+  end
+
+  def total_variant_stock
+    product_variants.sum(:stock_quantity)
+  end
+
+  def total_variant_available_stock
+    product_variants.sum('stock_quantity - reserved_quantity')
+  end
+
+  def variant_options_available
+    # Returns hash of available option types across all variants
+    # e.g., { "size" => ["Small", "Medium", "Large"], "color" => ["Red", "Blue"] }
+    return {} unless has_variants?
+
+    product_variants.active.includes(:variant_options).each_with_object({}) do |variant, hash|
+      variant.variant_options.each do |option|
+        hash[option.option_name] ||= []
+        hash[option.option_name] << option.option_value unless hash[option.option_name].include?(option.option_value)
+      end
+    end
+  end
+
+  def find_variant_by_options(options_hash)
+    # Find variant by option values
+    # e.g., product.find_variant_by_options("size" => "Large", "color" => "Red")
+    return nil unless has_variants?
+
+    product_variants.active.find do |variant|
+      variant.option_hash == options_hash.stringify_keys
+    end
+  end
+
   # Check if product is available for given date range and quantity
   def available?(start_date, end_date, requested_qty = 1)
     # If using instance tracking, check individual instances
@@ -125,12 +198,22 @@ class Product < ApplicationRecord
     end
   end
 
-  # Get available quantity for date range
+  # Get available quantity for date range (item-type aware)
   def available_quantity(start_date, end_date)
-    if uses_instance_tracking?
-      available_instances_count(start_date, end_date)
+    case item_type.to_sym
+    when :sale
+      # Sale items: return current stock on hand
+      stock_on_hand
+    when :service
+      # Services: unlimited availability
+      Float::INFINITY
     else
-      AvailabilityChecker.new(self, start_date, end_date).available_quantity
+      # Rental items: check date-based availability
+      if uses_instance_tracking?
+        available_instances_count(start_date, end_date)
+      else
+        AvailabilityChecker.new(self, start_date, end_date).available_quantity
+      end
     end
   end
 
@@ -222,6 +305,53 @@ class Product < ApplicationRecord
     (base_price * quantity).round(2)
   end
 
+  # Stock management methods for sale items
+  def decrement_stock!(quantity_sold)
+    return unless item_type_sale? && tracks_inventory?
+
+    if stock_on_hand < quantity_sold
+      raise ActiveRecord::RecordInvalid, "Insufficient stock. Available: #{stock_on_hand}, Requested: #{quantity_sold}"
+    end
+
+    update!(stock_on_hand: stock_on_hand - quantity_sold)
+  end
+
+  def increment_stock!(quantity_added)
+    return unless item_type_sale? && tracks_inventory?
+    update!(stock_on_hand: stock_on_hand + quantity_added)
+  end
+
+  def out_of_stock?
+    item_type_sale? && tracks_inventory? && stock_on_hand <= 0
+  end
+
+  def low_stock?
+    item_type_sale? && tracks_inventory? && reorder_point.present? && stock_on_hand <= reorder_point
+  end
+
+  # Get the appropriate price for the item type
+  def display_price_for_type
+    case item_type.to_sym
+    when :sale
+      sale_price
+    when :service
+      daily_price # Services use daily_price as flat fee
+    else
+      daily_price # Rentals show daily rate
+    end
+  end
+
+  def price_description
+    case item_type.to_sym
+    when :sale
+      "#{sale_price&.format || 'Not set'} (one-time)"
+    when :service
+      "#{daily_price&.format || 'Not set'} (flat fee)"
+    else
+      "#{daily_price&.format || 'Not set'}/day"
+    end
+  end
+
   private
 
   def calculate_base_price(rental_days, start_date, end_date)
@@ -245,6 +375,24 @@ class Product < ApplicationRecord
 
   def count_weekend_days(start_date, end_date)
     (start_date..end_date).count { |date| date.saturday? || date.sunday? }
+  end
+
+  # Validation: Ensure appropriate price is set for item type
+  def price_present_for_item_type
+    case item_type.to_sym
+    when :sale
+      if sale_price_cents.blank?
+        errors.add(:sale_price, 'must be present for sale items')
+      end
+    when :rental
+      if daily_price_cents.blank?
+        errors.add(:daily_price, 'must be present for rental items')
+      end
+    when :service
+      if daily_price_cents.blank?
+        errors.add(:daily_price, 'must be present for service items (used as flat fee)')
+      end
+    end
   end
 
   public

@@ -1,7 +1,7 @@
 class Api::V1::QrCodesController < ApplicationController
-  # QR code generation requires authentication for security
-  # Only authenticated users can generate QR codes for products, locations, etc.
-  skip_before_action :verify_authenticity_token
+  # QR code generation for products, locations, bookings, etc.
+  # Public endpoint - no authentication required for generating codes
+  skip_before_action :authenticate_user!
 
   # GET /api/v1/qr_codes/generate
   # Generate QR code for any data (barcode, serial number, URL, etc.)
@@ -13,26 +13,16 @@ class Api::V1::QrCodesController < ApplicationController
     end
 
     begin
-      # NOTE: There is currently a gem loading issue with rqrcode in the Puma server environment
-      # The gem loads fine in rails console/runner but fails in HTTP requests
-      # This may be related to Zeitwerk/Bootsnap configuration
-      # TODO: Investigate Zeitwerk/Bootsnap gem loading for rqrcode
-
-      begin
-        require 'rqrcode' unless defined?(RQRCode)
-      rescue LoadError
-        return render json: {
-          error: 'QR code generation temporarily unavailable. Please use rails console for QR generation.',
-          workaround: 'Run: rails runner "qr = RQRCode::QRCode.new(\'YOUR_DATA\'); puts qr.to_s"'
-        }, status: :service_unavailable
-      end
-
-      # Generate QR code
-      qr = RQRCode::QRCode.new(data)
-
-      # Get format (default to PNG)
+      # Get format and size parameters first
       format = params[:format]&.downcase || 'png'
       size = params[:size]&.to_i || 300
+
+      # Load required gems
+      require 'rqrcode'
+      require 'chunky_png' if format == 'png'
+
+      # Generate QR code with high error correction
+      qr = RQRCode::QRCode.new(data, level: :h)
 
       case format
       when 'svg'

@@ -2,7 +2,7 @@
 module Api
   module V1
     class ProductsController < ApplicationController
-      before_action :set_product, only: [:show, :update, :destroy, :availability, :attach_images, :remove_image, :transfer, :archive, :unarchive]
+      before_action :set_product, only: [:show, :update, :destroy, :availability, :attach_images, :remove_image, :transfer, :archive, :unarchive, :increment_stock, :decrement_stock, :restock]
 
       # GET /api/v1/products
       def index
@@ -214,6 +214,86 @@ module Api
         }
       end
 
+      # POST /api/v1/products/:id/increment_stock
+      # Add stock for sale items
+      def increment_stock
+        unless @product.item_type_sale?
+          return render json: {
+            error: "Stock management is only available for sale items"
+          }, status: :unprocessable_entity
+        end
+
+        quantity = params[:quantity].to_i
+
+        if quantity <= 0
+          return render json: {
+            error: "Quantity must be greater than 0"
+          }, status: :unprocessable_entity
+        end
+
+        @product.increment_stock!(quantity)
+
+        render json: {
+          message: "Stock increased by #{quantity}",
+          product: stock_json(@product)
+        }
+      end
+
+      # POST /api/v1/products/:id/decrement_stock
+      # Remove stock for sale items (manual sale/damage/loss)
+      def decrement_stock
+        unless @product.item_type_sale?
+          return render json: {
+            error: "Stock management is only available for sale items"
+          }, status: :unprocessable_entity
+        end
+
+        quantity = params[:quantity].to_i
+
+        if quantity <= 0
+          return render json: {
+            error: "Quantity must be greater than 0"
+          }, status: :unprocessable_entity
+        end
+
+        @product.decrement_stock!(quantity)
+
+        render json: {
+          message: "Stock decreased by #{quantity}",
+          product: stock_json(@product)
+        }
+      rescue ActiveRecord::RecordInvalid => e
+        render json: {
+          error: e.message
+        }, status: :unprocessable_entity
+      end
+
+      # POST /api/v1/products/:id/restock
+      # Set stock to specific amount
+      def restock
+        unless @product.item_type_sale?
+          return render json: {
+            error: "Stock management is only available for sale items"
+          }, status: :unprocessable_entity
+        end
+
+        new_stock = params[:stock_on_hand].to_i
+
+        if new_stock < 0
+          return render json: {
+            error: "Stock cannot be negative"
+          }, status: :unprocessable_entity
+        end
+
+        old_stock = @product.stock_on_hand
+        @product.update!(stock_on_hand: new_stock)
+
+        render json: {
+          message: "Stock updated from #{old_stock} to #{new_stock}",
+          product: stock_json(@product)
+        }
+      end
+
       private
 
       def set_product
@@ -227,35 +307,38 @@ module Api
           :name, :description, :category, :barcode,
           :daily_price_cents, :daily_price_currency,
           :weekly_price_cents, :weekly_price_currency,
+          :sale_price_cents, :sale_price_currency,
           :value_cents, :mass, :asset_tag,
           :product_type_id, :storage_location_id,
           :quantity, :active, :archived, :show_public, :end_date,
+          :item_type, :tracks_inventory, :stock_on_hand, :reorder_point,
           serial_numbers: [], custom_fields: {}, images: []
         )
       end
 
       def product_json(product)
-        {
+        base_json = {
           id: product.id,
           name: product.name,
           description: product.description,
           category: product.category,
           barcode: product.barcode,
           asset_tag: product.asset_tag,
+          item_type: product.item_type,
           daily_price: {
             amount: product.daily_price_cents,
             currency: product.daily_price_currency,
-            formatted: product.daily_price.format
+            formatted: product.daily_price&.format
           },
           weekly_price: {
             amount: product.weekly_price_cents,
             currency: product.weekly_price_currency,
-            formatted: product.weekly_price.format
+            formatted: product.weekly_price&.format
           },
           value: {
             amount: product.value_cents,
             currency: product.daily_price_currency,
-            formatted: Money.new(product.value_cents, product.daily_price_currency).format
+            formatted: Money.new(product.value_cents || 0, product.daily_price_currency).format
           },
           mass: product.mass,
           quantity: product.quantity,
@@ -275,6 +358,27 @@ module Api
           created_at: product.created_at,
           updated_at: product.updated_at
         }
+
+        # Add sale price for sale items
+        if product.item_type_sale?
+          base_json[:sale_price] = {
+            amount: product.sale_price_cents,
+            currency: product.sale_price_currency,
+            formatted: product.sale_price&.format
+          }
+        end
+
+        # Add stock info for sale items
+        if product.item_type_sale? && product.tracks_inventory?
+          base_json[:stock] = {
+            on_hand: product.stock_on_hand,
+            reorder_point: product.reorder_point,
+            out_of_stock: product.out_of_stock?,
+            low_stock: product.low_stock?
+          }
+        end
+
+        base_json
       end
 
       def product_detail_json(product)
@@ -301,6 +405,21 @@ module Api
           prev_page: collection.prev_page,
           total_pages: collection.total_pages,
           total_count: collection.total_count
+        }
+      end
+
+      def stock_json(product)
+        {
+          id: product.id,
+          name: product.name,
+          item_type: product.item_type,
+          stock_on_hand: product.stock_on_hand,
+          reorder_point: product.reorder_point,
+          tracks_inventory: product.tracks_inventory,
+          out_of_stock: product.out_of_stock?,
+          low_stock: product.low_stock?,
+          sale_price: product.sale_price&.format,
+          updated_at: product.updated_at
         }
       end
     end

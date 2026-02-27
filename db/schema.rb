@@ -10,9 +10,10 @@
 #
 # It's strongly recommended that you check this file into your version control system.
 
-ActiveRecord::Schema[8.1].define(version: 2026_02_26_173251) do
+ActiveRecord::Schema[8.1].define(version: 2026_02_26_220740) do
   # These are extensions that must be enabled in order to support this database
   enable_extension "pg_catalog.plpgsql"
+  enable_extension "pgcrypto"
 
   create_table "active_storage_attachments", force: :cascade do |t|
     t.bigint "blob_id", null: false
@@ -1223,6 +1224,39 @@ ActiveRecord::Schema[8.1].define(version: 2026_02_26_173251) do
     t.index ["name"], name: "index_product_types_on_name"
   end
 
+  create_table "product_variants", id: :uuid, default: -> { "gen_random_uuid()" }, force: :cascade do |t|
+    t.boolean "active", default: true
+    t.string "barcode"
+    t.bigint "company_id", null: false
+    t.integer "compare_at_price_cents"
+    t.datetime "created_at", null: false
+    t.jsonb "custom_attributes"
+    t.boolean "deleted", default: false
+    t.datetime "deleted_at"
+    t.jsonb "dimensions"
+    t.boolean "featured", default: false
+    t.integer "low_stock_threshold", default: 5
+    t.integer "position", default: 0
+    t.integer "price_cents"
+    t.string "price_currency", default: "USD"
+    t.bigint "product_id", null: false
+    t.integer "reserved_quantity", default: 0
+    t.string "sku", null: false
+    t.integer "stock_quantity", default: 0, null: false
+    t.datetime "updated_at", null: false
+    t.string "variant_name"
+    t.decimal "weight", precision: 10, scale: 2
+    t.index ["barcode"], name: "index_product_variants_on_barcode", unique: true, where: "(barcode IS NOT NULL)"
+    t.index ["company_id", "active"], name: "index_product_variants_on_company_id_and_active"
+    t.index ["company_id"], name: "index_product_variants_on_company_id"
+    t.index ["deleted"], name: "index_product_variants_on_deleted", where: "(deleted = false)"
+    t.index ["product_id", "active"], name: "index_product_variants_on_product_id_and_active"
+    t.index ["product_id", "position"], name: "index_product_variants_on_product_id_and_position"
+    t.index ["product_id", "stock_quantity"], name: "index_variants_with_stock", where: "(stock_quantity > 0)"
+    t.index ["product_id"], name: "index_product_variants_on_product_id"
+    t.index ["sku"], name: "index_product_variants_on_sku", unique: true
+  end
+
   create_table "products", force: :cascade do |t|
     t.boolean "active", default: true
     t.boolean "archived", default: false, null: false
@@ -1246,12 +1280,14 @@ ActiveRecord::Schema[8.1].define(version: 2026_02_26_173251) do
     t.text "description"
     t.datetime "end_date"
     t.boolean "featured", default: false
+    t.boolean "has_variants", default: false, null: false
     t.boolean "in_maintenance", default: false
     t.boolean "in_transit", default: false
     t.bigint "instance_id"
     t.date "insurance_expiry"
     t.string "insurance_policy_number"
     t.boolean "insurance_required"
+    t.integer "item_type", default: 0, null: false
     t.date "last_condition_check"
     t.date "last_depreciation_date"
     t.integer "late_fee_cents"
@@ -1268,14 +1304,19 @@ ActiveRecord::Schema[8.1].define(version: 2026_02_26_173251) do
     t.integer "purchase_price_cents"
     t.string "purchase_price_currency"
     t.integer "quantity", default: 1, null: false
+    t.integer "reorder_point"
     t.integer "replacement_cost_cents"
     t.string "replacement_cost_currency"
     t.datetime "reserved_until"
+    t.integer "sale_price_cents"
+    t.string "sale_price_currency", default: "USD"
     t.string "serial_numbers", default: [], array: true
     t.boolean "show_public", default: true, null: false
     t.jsonb "specifications", default: {}
+    t.integer "stock_on_hand", default: 0
     t.bigint "storage_location_id"
     t.string "tags", default: [], array: true
+    t.boolean "tracks_inventory", default: false
     t.text "transit_notes"
     t.datetime "updated_at", null: false
     t.integer "value_cents", default: 0, null: false
@@ -1293,12 +1334,16 @@ ActiveRecord::Schema[8.1].define(version: 2026_02_26_173251) do
     t.index ["custom_fields"], name: "index_products_on_custom_fields", using: :gin
     t.index ["deleted"], name: "index_products_on_deleted"
     t.index ["featured"], name: "index_products_on_featured"
+    t.index ["has_variants"], name: "index_products_on_has_variants"
     t.index ["instance_id", "active"], name: "index_products_on_instance_id_and_active"
     t.index ["instance_id"], name: "index_products_on_instance_id"
+    t.index ["item_type", "tracks_inventory"], name: "index_products_on_item_type_and_tracks_inventory"
+    t.index ["item_type"], name: "index_products_on_item_type"
     t.index ["model_number"], name: "index_products_on_model_number"
     t.index ["popularity_score"], name: "index_products_on_popularity_score"
     t.index ["product_type_id"], name: "index_products_on_product_type_id"
     t.index ["specifications"], name: "index_products_on_specifications", using: :gin
+    t.index ["stock_on_hand"], name: "index_products_on_stock_on_hand"
     t.index ["storage_location_id"], name: "index_products_on_storage_location_id"
     t.index ["tags"], name: "index_products_on_tags", using: :gin
   end
@@ -1450,6 +1495,7 @@ ActiveRecord::Schema[8.1].define(version: 2026_02_26_173251) do
     t.integer "calculation_method"
     t.string "city"
     t.bigint "company_id"
+    t.integer "component_type", default: 0
     t.boolean "compound"
     t.string "country"
     t.datetime "created_at", null: false
@@ -1457,6 +1503,7 @@ ActiveRecord::Schema[8.1].define(version: 2026_02_26_173251) do
     t.integer "maximum_amount_cents"
     t.integer "minimum_amount_cents"
     t.string "name"
+    t.bigint "parent_tax_rate_id"
     t.integer "position"
     t.decimal "rate"
     t.integer "rate_cents"
@@ -1467,7 +1514,16 @@ ActiveRecord::Schema[8.1].define(version: 2026_02_26_173251) do
     t.datetime "updated_at", null: false
     t.string "zip_code_pattern"
     t.index ["company_id"], name: "index_tax_rates_on_company_id"
+    t.index ["component_type"], name: "index_tax_rates_on_component_type"
+    t.index ["parent_tax_rate_id"], name: "index_tax_rates_on_parent_tax_rate_id"
     t.index ["tax_code"], name: "index_tax_rates_on_tax_code", unique: true
+  end
+
+  create_table "test_uuids", id: :uuid, default: -> { "gen_random_uuid()" }, force: :cascade do |t|
+    t.datetime "created_at", null: false
+    t.text "description"
+    t.string "name"
+    t.datetime "updated_at", null: false
   end
 
   create_table "user_certifications", force: :cascade do |t|
@@ -1534,6 +1590,51 @@ ActiveRecord::Schema[8.1].define(version: 2026_02_26_173251) do
     t.index ["permission_group_id"], name: "index_users_on_permission_group_id"
     t.index ["reset_password_token"], name: "index_users_on_reset_password_token", unique: true
     t.index ["verification_token"], name: "index_users_on_verification_token", unique: true
+  end
+
+  create_table "variant_options", id: :uuid, default: -> { "gen_random_uuid()" }, force: :cascade do |t|
+    t.bigint "company_id", null: false
+    t.datetime "created_at", null: false
+    t.jsonb "metadata"
+    t.string "option_name", null: false
+    t.string "option_value", null: false
+    t.integer "position", default: 0
+    t.uuid "product_variant_id", null: false
+    t.datetime "updated_at", null: false
+    t.index ["company_id", "option_name"], name: "index_variant_options_on_company_id_and_option_name"
+    t.index ["company_id"], name: "index_variant_options_on_company_id"
+    t.index ["option_name", "option_value"], name: "index_variant_options_on_option_name_and_option_value"
+    t.index ["option_name"], name: "index_variant_options_on_option_name"
+    t.index ["product_variant_id", "option_name"], name: "index_variant_options_on_variant_and_name", unique: true
+    t.index ["product_variant_id", "position"], name: "index_variant_options_on_product_variant_id_and_position"
+    t.index ["product_variant_id"], name: "index_variant_options_on_product_variant_id"
+  end
+
+  create_table "variant_stock_histories", id: :uuid, default: -> { "gen_random_uuid()" }, force: :cascade do |t|
+    t.string "change_type", null: false
+    t.bigint "company_id", null: false
+    t.datetime "created_at", null: false
+    t.bigint "location_id"
+    t.jsonb "metadata"
+    t.uuid "product_variant_id", null: false
+    t.integer "quantity_after", default: 0, null: false
+    t.integer "quantity_before", default: 0, null: false
+    t.integer "quantity_change", null: false
+    t.string "reason"
+    t.bigint "reference_id"
+    t.string "reference_type"
+    t.datetime "updated_at", null: false
+    t.bigint "user_id"
+    t.index ["change_type"], name: "index_variant_stock_histories_on_change_type"
+    t.index ["company_id", "created_at"], name: "index_variant_stock_histories_on_company_id_and_created_at"
+    t.index ["company_id"], name: "index_variant_stock_histories_on_company_id"
+    t.index ["created_at"], name: "index_variant_stock_histories_on_created_at"
+    t.index ["location_id"], name: "index_variant_stock_histories_on_location_id"
+    t.index ["product_variant_id", "created_at"], name: "idx_on_product_variant_id_created_at_e09229aff3"
+    t.index ["product_variant_id"], name: "index_variant_stock_histories_on_product_variant_id"
+    t.index ["reference_type", "reference_id"], name: "index_variant_stock_histories_on_reference"
+    t.index ["user_id", "created_at"], name: "index_variant_stock_histories_on_user_id_and_created_at"
+    t.index ["user_id"], name: "index_variant_stock_histories_on_user_id"
   end
 
   create_table "versions", force: :cascade do |t|
@@ -1707,6 +1808,8 @@ ActiveRecord::Schema[8.1].define(version: 2026_02_26_173251) do
   add_foreign_key "product_types", "companies"
   add_foreign_key "product_types", "instances"
   add_foreign_key "product_types", "manufacturers"
+  add_foreign_key "product_variants", "companies"
+  add_foreign_key "product_variants", "products"
   add_foreign_key "products", "companies"
   add_foreign_key "products", "instances"
   add_foreign_key "products", "locations", column: "storage_location_id"
@@ -1741,5 +1844,11 @@ ActiveRecord::Schema[8.1].define(version: 2026_02_26_173251) do
   add_foreign_key "users", "companies"
   add_foreign_key "users", "instances"
   add_foreign_key "users", "permission_groups"
+  add_foreign_key "variant_options", "companies"
+  add_foreign_key "variant_options", "product_variants"
+  add_foreign_key "variant_stock_histories", "companies"
+  add_foreign_key "variant_stock_histories", "locations"
+  add_foreign_key "variant_stock_histories", "product_variants"
+  add_foreign_key "variant_stock_histories", "users"
   add_foreign_key "waitlist_entries", "instances"
 end

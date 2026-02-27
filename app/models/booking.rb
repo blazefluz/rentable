@@ -703,6 +703,49 @@ class Booking < ApplicationRecord
 
   # Tax breakdown for display/reporting
   def tax_breakdown
+    line_items_with_breakdown = booking_line_items.map do |item|
+      tax_rate = item.effective_tax_rate
+      tax_detail = if tax_rate
+        tax_rate.tax_breakdown(item.line_subtotal.cents, item.line_subtotal.currency.to_s)
+      else
+        {
+          composite: false,
+          total_cents: 0,
+          total: Money.new(0, 'USD'),
+          components: []
+        }
+      end
+
+      {
+        bookable: item.bookable&.name,
+        line_total: item.line_total,
+        tax_amount: item.tax_amount,
+        tax_rate: tax_rate&.display_name,
+        tax_detail: tax_detail
+      }
+    end
+
+    # Aggregate all tax components across all line items
+    all_components = {}
+    line_items_with_breakdown.each do |item|
+      item[:tax_detail][:components].each do |component|
+        component_key = component[:type]
+        all_components[component_key] ||= {
+          name: component[:name],
+          type: component[:type],
+          rate: component[:rate],
+          amount_cents: 0
+        }
+        all_components[component_key][:amount_cents] += component[:amount_cents]
+      end
+    end
+
+    # Format aggregated components
+    tax_components = all_components.values.map do |comp|
+      comp[:amount] = Money.new(comp[:amount_cents], 'USD')
+      comp
+    end
+
     {
       subtotal: subtotal,
       tax_total: tax_total,
@@ -710,14 +753,8 @@ class Booking < ApplicationRecord
       tax_exempt: tax_exempt?,
       tax_override: tax_override?,
       reverse_charge: reverse_charge_applied?,
-      line_items: booking_line_items.map do |item|
-        {
-          bookable: item.bookable&.name,
-          line_total: item.line_total,
-          tax_amount: item.tax_amount,
-          tax_rate: item.tax_rate&.display_name
-        }
-      end
+      tax_components: tax_components,  # NEW: Aggregated tax breakdown by component
+      line_items: line_items_with_breakdown
     }
   end
 

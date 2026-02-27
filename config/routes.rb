@@ -33,6 +33,10 @@ Rails.application.routes.draw do
           post :transfer
           patch :archive
           patch :unarchive
+          # Stock management for sale items
+          post :increment_stock
+          post :decrement_stock
+          post :restock
         end
         collection do
           get 'search_by_barcode/:barcode', to: 'products#search_by_barcode', as: :search_by_barcode
@@ -41,10 +45,28 @@ Rails.application.routes.draw do
         resources :insurance_certificates, only: [:index, :show, :create, :update, :destroy]
         # Nested product instances
         resources :instances, controller: 'product_instances', only: [:index, :create]
+        # Nested product variants
+        resources :variants, controller: 'product_variants', only: [:index, :create] do
+          collection do
+            post :bulk_create
+            post :preview
+          end
+        end
       end
 
       # Product Instances (standalone access)
       resources :product_instances, only: [:index, :show, :update, :destroy]
+
+      # Product Variants (standalone access)
+      resources :variants, controller: 'product_variants', only: [:show, :update, :destroy] do
+        member do
+          post :adjust_stock
+          post :reserve
+          post :release
+          post :restock
+          post :damage
+        end
+      end
 
       # Kits
       resources :kits do
@@ -313,6 +335,14 @@ Rails.application.routes.draw do
       get 'qr_codes/product_instance/:id', to: 'qr_codes#product_instance', as: :qr_code_product_instance
       get 'qr_codes/location/:id', to: 'qr_codes#location', as: :qr_code_location
       get 'qr_codes/booking/:id', to: 'qr_codes#booking', as: :qr_code_booking
+
+      # AR Reports
+      namespace :ar_reports do
+        get 'aging', to: 'ar_reports#aging'
+        get 'summary', to: 'ar_reports#summary'
+        get 'by_client', to: 'ar_reports#by_client'
+        get 'overdue_list', to: 'ar_reports#overdue_list'
+      end
 
       # Public Catalog (no authentication required)
       get 'catalog', to: 'catalog#index'
