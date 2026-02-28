@@ -20,6 +20,7 @@ class Company < ApplicationRecord
   has_many :leads, dependent: :destroy
   has_many :asset_groups, dependent: :destroy
   has_many :maintenance_jobs, dependent: :destroy
+  has_many :company_settings, dependent: :destroy
   # has_one :subscription, dependent: :destroy  # Subscription model not yet created
   has_many_attached :branding_assets
 

@@ -10,7 +10,7 @@
 #
 # It's strongly recommended that you check this file into your version control system.
 
-ActiveRecord::Schema[8.1].define(version: 2026_02_26_220740) do
+ActiveRecord::Schema[8.1].define(version: 2026_02_28_183729) do
   # These are extensions that must be enabled in order to support this database
   enable_extension "pg_catalog.plpgsql"
   enable_extension "pgcrypto"
@@ -214,8 +214,10 @@ ActiveRecord::Schema[8.1].define(version: 2026_02_26_220740) do
     t.datetime "updated_at", null: false
     t.integer "workflow_status", default: 0, null: false
     t.index ["actual_return_date"], name: "index_booking_line_items_on_actual_return_date"
+    t.index ["bookable_type", "bookable_id", "booking_id"], name: "idx_booking_line_items_bookable", comment: "Polymorphic bookable association queries"
     t.index ["bookable_type", "bookable_id"], name: "index_booking_line_items_on_bookable"
     t.index ["bookable_type", "bookable_id"], name: "index_booking_line_items_on_bookable_type_and_bookable_id"
+    t.index ["booking_id", "taxable"], name: "idx_booking_line_items_taxable", comment: "Tax calculation queries"
     t.index ["booking_id"], name: "index_booking_line_items_on_booking_id"
     t.index ["days_overdue"], name: "index_booking_line_items_on_days_overdue"
     t.index ["deleted"], name: "index_booking_line_items_on_deleted"
@@ -356,9 +358,15 @@ ActiveRecord::Schema[8.1].define(version: 2026_02_26_220740) do
     t.index ["cancellation_policy"], name: "index_bookings_on_cancellation_policy"
     t.index ["cancelled_at"], name: "index_bookings_on_cancelled_at"
     t.index ["cancelled_by_id"], name: "index_bookings_on_cancelled_by_id"
+    t.index ["client_id", "start_date"], name: "idx_bookings_client_start_date", comment: "Customer booking history queries"
     t.index ["client_id"], name: "index_bookings_on_client_id"
     t.index ["collection_assigned_to_id"], name: "index_bookings_on_collection_assigned_to_id"
     t.index ["collection_status"], name: "index_bookings_on_collection_status"
+    t.index ["company_id", "lead_source"], name: "idx_bookings_lead_source", where: "((lead_source IS NOT NULL) AND ((lead_source)::text <> ''::text))", comment: "Lead source tracking for marketing"
+    t.index ["company_id", "payment_due_date", "days_past_due"], name: "idx_bookings_ar_overdue", where: "(payment_due_date IS NOT NULL)", comment: "AR aging and collection queries"
+    t.index ["company_id", "quote_status", "quote_expires_at"], name: "idx_bookings_company_quote_status", where: "(quote_status IS NOT NULL)", comment: "Quote management queries"
+    t.index ["company_id", "start_date", "end_date"], name: "idx_bookings_company_date_range", comment: "Optimizes date range queries for availability"
+    t.index ["company_id", "status", "start_date"], name: "idx_bookings_company_status_date", comment: "Status filtering with date sorting"
     t.index ["company_id"], name: "index_bookings_on_company_id"
     t.index ["converted_from_quote"], name: "index_bookings_on_converted_from_quote"
     t.index ["customer_email"], name: "index_bookings_on_customer_email"
@@ -432,6 +440,18 @@ ActiveRecord::Schema[8.1].define(version: 2026_02_26_220740) do
     t.datetime "updated_at", null: false
     t.decimal "utilization_rate"
     t.index ["client_id"], name: "index_client_metrics_on_client_id"
+  end
+
+  create_table "client_segments", id: :uuid, default: -> { "gen_random_uuid()" }, force: :cascade do |t|
+    t.boolean "active"
+    t.boolean "auto_update"
+    t.bigint "company_id", null: false
+    t.datetime "created_at", null: false
+    t.text "description"
+    t.jsonb "filter_rules"
+    t.string "name"
+    t.datetime "updated_at", null: false
+    t.index ["company_id"], name: "index_client_segments_on_company_id"
   end
 
   create_table "client_surveys", force: :cascade do |t|
@@ -631,6 +651,22 @@ ActiveRecord::Schema[8.1].define(version: 2026_02_26_220740) do
     t.index ["subdomain"], name: "index_companies_on_subdomain", unique: true
   end
 
+  create_table "company_settings", id: :uuid, default: -> { "gen_random_uuid()" }, force: :cascade do |t|
+    t.string "category", default: "general"
+    t.bigint "company_id", null: false
+    t.datetime "created_at", null: false
+    t.jsonb "default_value", default: {}
+    t.text "description"
+    t.boolean "editable", default: true, null: false
+    t.string "setting_key", null: false
+    t.integer "setting_type", default: 0, null: false
+    t.jsonb "setting_value", default: {}
+    t.datetime "updated_at", null: false
+    t.index ["category"], name: "index_company_settings_on_category"
+    t.index ["company_id", "setting_key"], name: "index_company_settings_on_company_id_and_setting_key", unique: true
+    t.index ["setting_type"], name: "index_company_settings_on_setting_type"
+  end
+
   create_table "contacts", force: :cascade do |t|
     t.bigint "client_id", null: false
     t.bigint "company_id"
@@ -730,22 +766,118 @@ ActiveRecord::Schema[8.1].define(version: 2026_02_26_220740) do
     t.index ["severity"], name: "index_damage_reports_on_severity"
   end
 
+  create_table "email_campaigns", id: :uuid, default: -> { "gen_random_uuid()" }, force: :cascade do |t|
+    t.boolean "active"
+    t.integer "campaign_type"
+    t.bigint "company_id", null: false
+    t.datetime "created_at", null: false
+    t.integer "delay_hours"
+    t.datetime "ends_at"
+    t.string "name"
+    t.datetime "starts_at"
+    t.integer "status"
+    t.jsonb "trigger_conditions"
+    t.datetime "updated_at", null: false
+    t.index ["company_id"], name: "index_email_campaigns_on_company_id"
+  end
+
   create_table "email_queues", force: :cascade do |t|
     t.integer "attempts"
     t.text "body"
+    t.text "bounce_reason"
+    t.datetime "bounced_at"
+    t.datetime "clicked_at"
     t.bigint "company_id"
     t.datetime "created_at", null: false
+    t.datetime "delivered_at"
+    t.uuid "email_campaign_id"
+    t.uuid "email_sequence_id"
     t.text "error_message"
-    t.bigint "instance_id", null: false
+    t.bigint "instance_id"
     t.datetime "last_attempt_at"
     t.jsonb "metadata"
+    t.datetime "opened_at"
     t.string "recipient"
     t.datetime "sent_at"
     t.integer "status"
     t.string "subject"
+    t.datetime "unsubscribed_at"
     t.datetime "updated_at", null: false
     t.index ["company_id"], name: "index_email_queues_on_company_id"
+    t.index ["email_campaign_id"], name: "index_email_queues_on_email_campaign_id"
+    t.index ["email_sequence_id"], name: "index_email_queues_on_email_sequence_id"
     t.index ["instance_id"], name: "index_email_queues_on_instance_id"
+  end
+
+  create_table "email_sequences", id: :uuid, default: -> { "gen_random_uuid()" }, force: :cascade do |t|
+    t.boolean "active"
+    t.text "body_template"
+    t.datetime "created_at", null: false
+    t.uuid "email_campaign_id", null: false
+    t.integer "send_delay_hours"
+    t.integer "sequence_number"
+    t.text "subject_template"
+    t.datetime "updated_at", null: false
+    t.index ["email_campaign_id"], name: "index_email_sequences_on_email_campaign_id"
+  end
+
+  create_table "email_templates", id: :uuid, default: -> { "gen_random_uuid()" }, force: :cascade do |t|
+    t.boolean "active"
+    t.integer "category"
+    t.bigint "company_id", null: false
+    t.datetime "created_at", null: false
+    t.text "html_body"
+    t.string "name"
+    t.string "subject"
+    t.text "text_body"
+    t.datetime "updated_at", null: false
+    t.jsonb "variable_schema"
+    t.index ["company_id"], name: "index_email_templates_on_company_id"
+  end
+
+  create_table "expense_budgets", id: :uuid, default: -> { "gen_random_uuid()" }, force: :cascade do |t|
+    t.integer "budgeted_amount_cents"
+    t.string "budgeted_amount_currency"
+    t.integer "category"
+    t.bigint "company_id", null: false
+    t.datetime "created_at", null: false
+    t.date "end_date"
+    t.integer "period_type"
+    t.date "start_date"
+    t.datetime "updated_at", null: false
+    t.index ["company_id"], name: "index_expense_budgets_on_company_id"
+  end
+
+  create_table "expenses", id: :uuid, default: -> { "gen_random_uuid()" }, force: :cascade do |t|
+    t.integer "amount_cents"
+    t.string "amount_currency"
+    t.integer "category"
+    t.bigint "company_id", null: false
+    t.datetime "created_at", null: false
+    t.date "date"
+    t.text "description"
+    t.string "invoice_number"
+    t.text "notes"
+    t.date "payment_date"
+    t.string "payment_method"
+    t.datetime "updated_at", null: false
+    t.string "vendor"
+    t.index ["company_id"], name: "index_expenses_on_company_id"
+  end
+
+  create_table "financial_reports", id: :uuid, default: -> { "gen_random_uuid()" }, force: :cascade do |t|
+    t.bigint "company_id", null: false
+    t.datetime "created_at", null: false
+    t.jsonb "data"
+    t.date "end_date"
+    t.datetime "generated_at"
+    t.bigint "generated_by_id", null: false
+    t.integer "period_type"
+    t.integer "report_type"
+    t.date "start_date"
+    t.datetime "updated_at", null: false
+    t.index ["company_id"], name: "index_financial_reports_on_company_id"
+    t.index ["generated_by_id"], name: "index_financial_reports_on_generated_by_id"
   end
 
   create_table "instances", force: :cascade do |t|
@@ -916,26 +1048,78 @@ ActiveRecord::Schema[8.1].define(version: 2026_02_26_220740) do
   end
 
   create_table "maintenance_jobs", force: :cascade do |t|
+    t.text "actions_taken"
+    t.decimal "actual_duration_hours"
     t.bigint "assigned_to_id"
+    t.boolean "auto_generate"
     t.bigint "company_id"
     t.datetime "completed_date"
     t.integer "cost_cents"
     t.string "cost_currency"
     t.datetime "created_at", null: false
+    t.integer "day_of_month"
+    t.integer "day_of_week"
     t.boolean "deleted"
     t.text "description"
+    t.decimal "estimated_duration_hours"
+    t.text "findings"
     t.bigint "instance_id"
+    t.boolean "is_recurring"
+    t.date "last_generated_date"
+    t.integer "maintenance_type"
+    t.date "next_occurrence_date"
     t.text "notes"
+    t.datetime "notified_at"
+    t.jsonb "parts_used"
     t.integer "priority"
+    t.text "procedure_notes"
     t.bigint "product_id", null: false
+    t.integer "recurrence_interval"
+    t.string "recurrence_pattern"
+    t.jsonb "required_parts"
     t.datetime "scheduled_date"
     t.integer "status"
     t.string "title"
+    t.jsonb "total_cost_breakdown"
     t.datetime "updated_at", null: false
     t.index ["assigned_to_id"], name: "index_maintenance_jobs_on_assigned_to_id"
     t.index ["company_id"], name: "index_maintenance_jobs_on_company_id"
     t.index ["instance_id"], name: "index_maintenance_jobs_on_instance_id"
     t.index ["product_id"], name: "index_maintenance_jobs_on_product_id"
+  end
+
+  create_table "maintenance_logs", force: :cascade do |t|
+    t.datetime "completed_at", null: false
+    t.datetime "created_at", null: false
+    t.bigint "maintenance_schedule_id", null: false
+    t.text "notes"
+    t.bigint "performed_by_id", null: false
+    t.datetime "updated_at", null: false
+    t.index ["completed_at"], name: "index_maintenance_logs_on_completed_at"
+    t.index ["maintenance_schedule_id"], name: "index_maintenance_logs_on_maintenance_schedule_id"
+    t.index ["performed_by_id"], name: "index_maintenance_logs_on_performed_by_id"
+  end
+
+  create_table "maintenance_schedules", force: :cascade do |t|
+    t.bigint "assigned_to_id"
+    t.bigint "company_id", null: false
+    t.datetime "created_at", null: false
+    t.text "description"
+    t.boolean "enabled", default: true
+    t.string "frequency", null: false
+    t.string "interval_unit", null: false
+    t.integer "interval_value", null: false
+    t.datetime "last_completed_at"
+    t.string "name", null: false
+    t.datetime "next_due_date"
+    t.bigint "product_id", null: false
+    t.string "status", default: "scheduled"
+    t.datetime "updated_at", null: false
+    t.index ["assigned_to_id"], name: "index_maintenance_schedules_on_assigned_to_id"
+    t.index ["company_id"], name: "index_maintenance_schedules_on_company_id"
+    t.index ["next_due_date", "enabled"], name: "index_maintenance_schedules_on_next_due_enabled", where: "(enabled = true)"
+    t.index ["product_id"], name: "index_maintenance_schedules_on_product_id"
+    t.index ["status"], name: "index_maintenance_schedules_on_status"
   end
 
   create_table "manufacturers", force: :cascade do |t|
@@ -1005,6 +1189,7 @@ ActiveRecord::Schema[8.1].define(version: 2026_02_26_220740) do
     t.string "reference"
     t.string "supplier"
     t.datetime "updated_at", null: false
+    t.index ["booking_id", "payment_type", "payment_date"], name: "idx_payments_booking_type_date", comment: "Booking payment history"
     t.index ["booking_id"], name: "index_payments_on_booking_id"
     t.index ["deleted"], name: "index_payments_on_deleted"
     t.index ["instance_id"], name: "index_payments_on_instance_id"
@@ -1167,6 +1352,10 @@ ActiveRecord::Schema[8.1].define(version: 2026_02_26_220740) do
     t.datetime "created_at", null: false
     t.bigint "current_location_id"
     t.boolean "deleted", default: false
+    t.datetime "maintenance_override_at"
+    t.bigint "maintenance_override_by_id"
+    t.text "maintenance_override_reason"
+    t.integer "maintenance_status"
     t.text "notes"
     t.bigint "product_id", null: false
     t.date "purchase_date"
@@ -1258,6 +1447,10 @@ ActiveRecord::Schema[8.1].define(version: 2026_02_26_220740) do
   end
 
   create_table "products", force: :cascade do |t|
+    t.integer "accumulated_maintenance_cost_cents"
+    t.string "accumulated_maintenance_cost_currency"
+    t.integer "accumulated_revenue_cents"
+    t.string "accumulated_revenue_currency"
     t.boolean "active", default: true
     t.boolean "archived", default: false, null: false
     t.string "asset_tag"
@@ -1276,6 +1469,7 @@ ActiveRecord::Schema[8.1].define(version: 2026_02_26_220740) do
     t.integer "damage_waiver_price_cents"
     t.string "damage_waiver_price_currency"
     t.boolean "deleted", default: false, null: false
+    t.integer "depreciation_method"
     t.decimal "depreciation_rate"
     t.text "description"
     t.datetime "end_date"
@@ -1293,6 +1487,10 @@ ActiveRecord::Schema[8.1].define(version: 2026_02_26_220740) do
     t.integer "late_fee_cents"
     t.string "late_fee_currency"
     t.integer "late_fee_type"
+    t.datetime "maintenance_override_at"
+    t.bigint "maintenance_override_by_id"
+    t.text "maintenance_override_reason"
+    t.integer "maintenance_status", default: 0
     t.decimal "mass", precision: 10, scale: 2
     t.integer "minimum_rental_days"
     t.string "model_number"
@@ -1308,6 +1506,7 @@ ActiveRecord::Schema[8.1].define(version: 2026_02_26_220740) do
     t.integer "replacement_cost_cents"
     t.string "replacement_cost_currency"
     t.datetime "reserved_until"
+    t.integer "residual_value_cents"
     t.integer "sale_price_cents"
     t.string "sale_price_currency", default: "USD"
     t.string "serial_numbers", default: [], array: true
@@ -1330,6 +1529,10 @@ ActiveRecord::Schema[8.1].define(version: 2026_02_26_220740) do
     t.index ["asset_tag"], name: "index_products_on_asset_tag", unique: true, where: "(asset_tag IS NOT NULL)"
     t.index ["barcode"], name: "index_products_on_barcode", unique: true, where: "(barcode IS NOT NULL)"
     t.index ["category"], name: "index_products_on_category"
+    t.index ["company_id", "category", "active"], name: "idx_products_company_category_active", comment: "Product catalog filtering"
+    t.index ["company_id", "item_type", "active"], name: "idx_products_company_item_type", comment: "Product type filtering"
+    t.index ["company_id", "maintenance_status"], name: "idx_products_maintenance_status", where: "(maintenance_status IS NOT NULL)", comment: "Maintenance tracking queries"
+    t.index ["company_id", "stock_on_hand"], name: "idx_products_inventory_stock", where: "(tracks_inventory = true)", comment: "Inventory tracking queries"
     t.index ["company_id"], name: "index_products_on_company_id"
     t.index ["custom_fields"], name: "index_products_on_custom_fields", using: :gin
     t.index ["deleted"], name: "index_products_on_deleted"
@@ -1339,6 +1542,7 @@ ActiveRecord::Schema[8.1].define(version: 2026_02_26_220740) do
     t.index ["instance_id"], name: "index_products_on_instance_id"
     t.index ["item_type", "tracks_inventory"], name: "index_products_on_item_type_and_tracks_inventory"
     t.index ["item_type"], name: "index_products_on_item_type"
+    t.index ["maintenance_status"], name: "index_products_on_maintenance_status"
     t.index ["model_number"], name: "index_products_on_model_number"
     t.index ["popularity_score"], name: "index_products_on_popularity_score"
     t.index ["product_type_id"], name: "index_products_on_product_type_id"
@@ -1416,6 +1620,19 @@ ActiveRecord::Schema[8.1].define(version: 2026_02_26_220740) do
     t.index ["company_id"], name: "index_sales_tasks_on_company_id"
     t.index ["instance_id"], name: "index_sales_tasks_on_instance_id"
     t.index ["user_id"], name: "index_sales_tasks_on_user_id"
+  end
+
+  create_table "scheduled_reports", id: :uuid, default: -> { "gen_random_uuid()" }, force: :cascade do |t|
+    t.boolean "active"
+    t.bigint "company_id", null: false
+    t.datetime "created_at", null: false
+    t.integer "format"
+    t.integer "frequency"
+    t.date "next_send_date"
+    t.jsonb "recipients"
+    t.integer "report_type"
+    t.datetime "updated_at", null: false
+    t.index ["company_id"], name: "index_scheduled_reports_on_company_id"
   end
 
   create_table "service_agreements", force: :cascade do |t|
@@ -1584,6 +1801,7 @@ ActiveRecord::Schema[8.1].define(version: 2026_02_26_220740) do
     t.datetime "updated_at", null: false
     t.string "verification_token"
     t.index ["api_token"], name: "index_users_on_api_token", unique: true, where: "(api_token IS NOT NULL)"
+    t.index ["company_id", "role"], name: "idx_users_company_role", comment: "Company user role queries"
     t.index ["company_id"], name: "index_users_on_company_id"
     t.index ["email"], name: "index_users_on_email", unique: true
     t.index ["instance_id"], name: "index_users_on_instance_id"
@@ -1717,6 +1935,7 @@ ActiveRecord::Schema[8.1].define(version: 2026_02_26_220740) do
   add_foreign_key "client_communications", "contacts"
   add_foreign_key "client_communications", "users"
   add_foreign_key "client_metrics", "clients"
+  add_foreign_key "client_segments", "companies"
   add_foreign_key "client_surveys", "bookings"
   add_foreign_key "client_surveys", "clients"
   add_foreign_key "client_surveys", "companies"
@@ -1734,6 +1953,7 @@ ActiveRecord::Schema[8.1].define(version: 2026_02_26_220740) do
   add_foreign_key "comments", "comments", column: "parent_comment_id"
   add_foreign_key "comments", "instances"
   add_foreign_key "comments", "users"
+  add_foreign_key "company_settings", "companies"
   add_foreign_key "contacts", "clients"
   add_foreign_key "contacts", "companies"
   add_foreign_key "contract_signatures", "contracts"
@@ -1744,8 +1964,15 @@ ActiveRecord::Schema[8.1].define(version: 2026_02_26_220740) do
   add_foreign_key "damage_reports", "companies"
   add_foreign_key "damage_reports", "products"
   add_foreign_key "damage_reports", "users", column: "reported_by_id"
+  add_foreign_key "email_campaigns", "companies"
   add_foreign_key "email_queues", "companies"
   add_foreign_key "email_queues", "instances"
+  add_foreign_key "email_sequences", "email_campaigns"
+  add_foreign_key "email_templates", "companies"
+  add_foreign_key "expense_budgets", "companies"
+  add_foreign_key "expenses", "companies"
+  add_foreign_key "financial_reports", "companies"
+  add_foreign_key "financial_reports", "users", column: "generated_by_id"
   add_foreign_key "instances", "users", column: "owner_id"
   add_foreign_key "insurance_certificates", "companies"
   add_foreign_key "insurance_certificates", "products"
@@ -1775,6 +2002,11 @@ ActiveRecord::Schema[8.1].define(version: 2026_02_26_220740) do
   add_foreign_key "maintenance_jobs", "instances"
   add_foreign_key "maintenance_jobs", "products"
   add_foreign_key "maintenance_jobs", "users", column: "assigned_to_id"
+  add_foreign_key "maintenance_logs", "maintenance_schedules"
+  add_foreign_key "maintenance_logs", "users", column: "performed_by_id"
+  add_foreign_key "maintenance_schedules", "companies"
+  add_foreign_key "maintenance_schedules", "products"
+  add_foreign_key "maintenance_schedules", "users", column: "assigned_to_id"
   add_foreign_key "manufacturers", "companies"
   add_foreign_key "manufacturers", "instances"
   add_foreign_key "notes", "users"
@@ -1814,6 +2046,7 @@ ActiveRecord::Schema[8.1].define(version: 2026_02_26_220740) do
   add_foreign_key "products", "instances"
   add_foreign_key "products", "locations", column: "storage_location_id"
   add_foreign_key "products", "product_types"
+  add_foreign_key "products", "users", column: "maintenance_override_by_id"
   add_foreign_key "project_types", "companies"
   add_foreign_key "project_types", "instances"
   add_foreign_key "recurring_bookings", "clients"
@@ -1823,6 +2056,7 @@ ActiveRecord::Schema[8.1].define(version: 2026_02_26_220740) do
   add_foreign_key "sales_tasks", "companies"
   add_foreign_key "sales_tasks", "instances"
   add_foreign_key "sales_tasks", "users"
+  add_foreign_key "scheduled_reports", "companies"
   add_foreign_key "service_agreements", "clients"
   add_foreign_key "service_agreements", "companies"
   add_foreign_key "staff_applications", "staff_roles"
