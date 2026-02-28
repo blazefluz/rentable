@@ -37,6 +37,9 @@ Rails.application.routes.draw do
           post :increment_stock
           post :decrement_stock
           post :restock
+          # Maintenance routes
+          get :maintenance_history
+          post :override_maintenance
         end
         collection do
           get 'search_by_barcode/:barcode', to: 'products#search_by_barcode', as: :search_by_barcode
@@ -234,7 +237,27 @@ Rails.application.routes.draw do
       end
 
       # Maintenance Jobs
-      resources :maintenance_jobs
+      resources :maintenance_jobs do
+        member do
+          post :complete
+          post :attach_before_photos
+          post :attach_after_photos
+        end
+      end
+
+      # Maintenance Schedules
+      resources :maintenance_schedules do
+        member do
+          post :complete
+        end
+        collection do
+          get :due
+          get :overdue
+        end
+      end
+
+      # Maintenance Calendar
+      get 'maintenance_calendar', to: 'maintenance_calendar#index'
 
       # Asset Assignments
       resources :asset_assignments do
@@ -342,6 +365,62 @@ Rails.application.routes.draw do
         get 'summary', to: 'ar_reports#summary'
         get 'by_client', to: 'ar_reports#by_client'
         get 'overdue_list', to: 'ar_reports#overdue_list'
+      end
+
+      # Email Marketing
+      resources :email_campaigns do
+        member do
+          get :analytics
+          post :send_campaign, path: 'send'
+          post :pause
+          post :resume
+        end
+      end
+
+      resources :email_templates do
+        member do
+          post :preview
+        end
+      end
+
+      resources :client_segments, only: [:index, :show, :create, :update, :destroy] do
+        member do
+          get :clients
+          get :metrics
+          post :refresh
+        end
+      end
+
+      # SendGrid Webhooks
+      namespace :webhooks do
+        post 'sendgrid/event', to: 'sendgrid#event'
+      end
+
+      # Financial Reports
+      namespace :financial_reports do
+        post :profit_loss
+        get :revenue_breakdown
+        get :expense_summary
+        get :roi_analysis
+      end
+
+      # Expense Tracking
+      resources :expenses do
+        collection do
+          get :summary
+        end
+      end
+
+      # Expense Budgets
+      resources :expense_budgets, only: [:index, :show, :create, :update, :destroy]
+
+      # Scheduled Reports
+      resources :scheduled_reports, only: [:index, :show, :create, :update, :destroy] do
+        member do
+          post :activate
+          post :deactivate
+          post :send_now
+        end
       end
 
       # Public Catalog (no authentication required)

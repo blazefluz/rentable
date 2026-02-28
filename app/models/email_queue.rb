@@ -1,6 +1,11 @@
 class EmailQueue < ApplicationRecord
   include ActsAsTenant
 
+  # Associations
+  belongs_to :company
+  belongs_to :email_campaign, optional: true
+  belongs_to :email_sequence, optional: true
+
   enum :status, {
     pending: 0,
     processing: 1,

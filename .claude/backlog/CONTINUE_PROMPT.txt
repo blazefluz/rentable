@@ -1,0 +1,93 @@
+═══════════════════════════════════════════════════════════════
+    RENTABLE - CONTINUE DEVELOPMENT QUICK PROMPTS
+═══════════════════════════════════════════════════════════════
+
+🎯 RECOMMENDED: Start Sprint 17 (Preventive Maintenance)
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+Start Sprint 17: Preventive Maintenance. Use backend-developer skill
+to implement MAINT-101 from .claude/backlog/user-stories/MAINT-101-schedule-recurring-maintenance.md
+
+Create the MaintenanceSchedule model, service layer, and API endpoints.
+Follow the technical specifications and update sprint progress.
+
+
+📊 OPTION 2: Review What to Build Next
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+Use product-manager skill to review .claude/backlog/FEATURE_INVENTORY.md
+and .claude/backlog/PRODUCT_ROADMAP.md. Recommend the top 3 most
+impactful features to build and explain why.
+
+
+🔧 OPTION 3: Fix Technical Debt First
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+Use database-administrator skill to work on TD-002 from
+.claude/backlog/TECHNICAL_DEBT.md. Add missing database indexes
+to improve query performance on bookings and products tables.
+
+
+💰 OPTION 4: Build Financial Reporting
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+Use backend-developer skill to implement FIN-101 from
+.claude/backlog/user-stories/FIN-101-profit-loss-statement.md
+
+Create P&L statement generation with expense tracking and ROI calculations.
+
+
+📅 OPTION 5: Google Calendar Integration
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+Use backend-developer skill to implement CAL-101 from
+.claude/backlog/user-stories/CAL-101-google-calendar-sync.md
+
+Set up OAuth 2.0 and two-way sync between Rentable and Google Calendar.
+
+
+📧 OPTION 6: Email Marketing Automation
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+Use backend-developer skill to implement EMAIL-101 from
+.claude/backlog/user-stories/EMAIL-101-quote-follow-up-automation.md
+
+Build automated email campaigns with SendGrid integration and tracking.
+
+
+═══════════════════════════════════════════════════════════════
+KEY FILES TO REFERENCE
+═══════════════════════════════════════════════════════════════
+
+📋 What's Built vs Missing:
+   .claude/backlog/FEATURE_INVENTORY.md
+
+🗺️  4-Phase Roadmap:
+   .claude/backlog/PRODUCT_ROADMAP.md
+
+📊 Current Backlog Summary:
+   .claude/backlog/BACKLOG_SUMMARY.md
+
+🏃 Next Sprint Plan:
+   .claude/backlog/sprints/sprint-17-preventive-maintenance.md
+
+🔧 Technical Debt:
+   .claude/backlog/TECHNICAL_DEBT.md
+
+📖 Detailed Guide:
+   .claude/backlog/START_DEVELOPMENT.md
+
+
+═══════════════════════════════════════════════════════════════
+QUICK STATUS CHECK
+═══════════════════════════════════════════════════════════════
+
+Current System Status: 70-75% Complete ✅
+Next Sprint: Sprint 17 (March 3-16, 2026)
+Priority Epic: MAINT (Preventive Maintenance)
+Estimated Completion: 12-18 months for full roadmap
+
+
+═══════════════════════════════════════════════════════════════
+COPY ONE PROMPT ABOVE AND PASTE TO CONTINUE! 🚀
+═══════════════════════════════════════════════════════════════

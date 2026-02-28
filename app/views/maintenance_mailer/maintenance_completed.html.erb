@@ -1,0 +1,55 @@
+<!DOCTYPE html>
+<html>
+  <head>
+    <meta content='text/html; charset=UTF-8' http-equiv='Content-Type' />
+    <style>
+      body { font-family: Arial, sans-serif; line-height: 1.6; color: #333; }
+      .container { max-width: 600px; margin: 0 auto; padding: 20px; }
+      .header { background-color: #28A745; color: white; padding: 20px; text-align: center; border-radius: 5px 5px 0 0; }
+      .content { background-color: #f9f9f9; padding: 30px; border: 1px solid #ddd; border-top: none; }
+      .product-info { background-color: white; padding: 15px; margin: 20px 0; border-left: 4px solid #28A745; }
+      .success { background-color: #D4EDDA; border: 1px solid #C3E6CB; padding: 15px; margin: 20px 0; border-radius: 4px; color: #155724; }
+      .details-section { background-color: white; padding: 15px; margin: 15px 0; border-radius: 4px; border: 1px solid #ddd; }
+      .footer { text-align: center; padding: 20px; color: #666; font-size: 12px; }
+    </style>
+  </head>
+  <body>
+    <div class="container">
+      <div class="header">
+        <h1>✅ Maintenance Completed</h1>
+      </div>
+      <div class="content">
+        <p>A maintenance job has been completed successfully:</p>
+        <div class="product-info">
+          <h3><%= @product.name %></h3>
+          <p><strong>Barcode:</strong> <%= @product.barcode %></p>
+          <p><strong>Job Title:</strong> <%= @job.title %></p>
+          <p><strong>Performed By:</strong> <%= @performed_by.name %></p>
+          <p><strong>Completed At:</strong> <%= @job.completed_at.strftime('%B %d, %Y at %I:%M %p') %></p>
+        </div>
+        <% if @findings.present? %>
+          <div class="details-section">
+            <h4>Findings & Notes:</h4>
+            <p><%= simple_format(@findings) %></p>
+          </div>
+        <% end %>
+        <% if @parts_used.present? %>
+          <div class="details-section">
+            <h4>Parts Used:</h4>
+            <p><%= simple_format(@parts_used) %></p>
+          </div>
+        <% end %>
+        <% if @total_cost %>
+          <div class="success">
+            <strong>💰 Total Cost:</strong> <%= @total_cost.format %>
+          </div>
+        <% end %>
+        <p style="margin-top: 20px;">The equipment is now ready for service and available for rentals.</p>
+      </div>
+      <div class="footer">
+        <p>This is an automated notification from your Rentable system.</p>
+        <p>© <%= Time.current.year %> Rentable. All rights reserved.</p>
+      </div>
+    </div>
+  </body>
+</html>

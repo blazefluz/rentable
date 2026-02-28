@@ -1,11 +1,11 @@
 FactoryBot.define do
   factory :client do
-    name { Faker::Company.name }
-    email { Faker::Internet.email }
-    phone { Faker::PhoneNumber.phone_number }
-    website { Faker::Internet.url }
-    address { Faker::Address.full_address }
-    notes { Faker::Lorem.paragraph }
+    association :company
+    sequence(:name) { |n| "Client Company #{n}" }
+    sequence(:email) { |n| "client#{n}@example.com" }
+    phone { '+1-555-0100' }
+    website { 'https://example.com' }
+    address { '123 Main St, City, ST 12345' }
     archived { false }
     deleted { false }
 
@@ -15,6 +15,12 @@ FactoryBot.define do
 
     trait :deleted do
       deleted { true }
+    end
+
+    trait :with_notes do
+      after(:create) do |client|
+        create_list(:note, 2, notable: client)
+      end
     end
   end
 end

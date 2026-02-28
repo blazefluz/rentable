@@ -1,24 +1,60 @@
 FactoryBot.define do
   factory :company do
-    name { "MyString" }
-    subdomain { "MyString" }
-    custom_domain { "MyString" }
-    logo { "MyString" }
-    primary_color { "MyString" }
-    secondary_color { "MyString" }
-    timezone { "MyString" }
-    default_currency { "MyString" }
-    business_email { "MyString" }
-    business_phone { "MyString" }
-    address { "MyText" }
-    settings { "" }
-    status { 1 }
-    subscription_tier { 1 }
-    trial_ends_at { "2026-02-26 12:53:39" }
-    subscription_started_at { "2026-02-26 12:53:39" }
-    subscription_cancelled_at { "2026-02-26 12:53:39" }
-    active { false }
+    sequence(:name) { |n| "Test Company #{n}" }
+    sequence(:subdomain) { |n| "test-company-#{n}" }
+    custom_domain { nil }
+    logo { nil }
+    primary_color { '#3B82F6' }
+    secondary_color { '#10B981' }
+    timezone { 'UTC' }
+    default_currency { 'USD' }
+    sequence(:business_email) { |n| "company#{n}@example.com" }
+    business_phone { '+1-555-0123' }
+    address { '123 Main St, Anytown, USA' }
+    settings { {} }
+    status { :active }
+    subscription_tier { :professional }
+    trial_ends_at { 14.days.from_now }
+    subscription_started_at { Time.current }
+    subscription_cancelled_at { nil }
+    active { true }
     deleted { false }
-    deleted_at { "2026-02-26 12:53:39" }
+    deleted_at { nil }
+
+    trait :trial do
+      status { :trial }
+      subscription_tier { :free }
+      trial_ends_at { 14.days.from_now }
+      subscription_started_at { nil }
+    end
+
+    trait :starter do
+      subscription_tier { :starter }
+    end
+
+    trait :professional do
+      subscription_tier { :professional }
+    end
+
+    trait :enterprise do
+      subscription_tier { :enterprise }
+    end
+
+    trait :suspended do
+      status { :suspended }
+      active { false }
+    end
+
+    trait :cancelled do
+      status { :cancelled }
+      subscription_cancelled_at { Time.current }
+      active { false }
+    end
+
+    trait :deleted do
+      deleted { true }
+      deleted_at { Time.current }
+      active { false }
+    end
   end
 end

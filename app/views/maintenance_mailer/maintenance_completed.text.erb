@@ -1,0 +1,29 @@
+MAINTENANCE COMPLETED
+
+A maintenance job has been completed successfully:
+
+Product: <%= @product.name %>
+Barcode: <%= @product.barcode %>
+Job Title: <%= @job.title %>
+Performed By: <%= @performed_by.name %>
+Completed At: <%= @job.completed_at.strftime('%B %d, %Y at %I:%M %p') %>
+
+<% if @findings.present? %>
+FINDINGS & NOTES:
+<%= @findings %>
+<% end %>
+
+<% if @parts_used.present? %>
+PARTS USED:
+<%= @parts_used %>
+<% end %>
+
+<% if @total_cost %>
+TOTAL COST: <%= @total_cost.format %>
+<% end %>
+
+The equipment is now ready for service and available for rentals.
+
+---
+This is an automated notification from your Rentable system.
+© <%= Time.current.year %> Rentable. All rights reserved.

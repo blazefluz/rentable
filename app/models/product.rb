@@ -1,6 +1,7 @@
 # app/models/product.rb
 class Product < ApplicationRecord
   include ActsAsTenant
+  acts_as_tenant(:company)
 
   # Audit trail
   has_paper_trail
@@ -14,6 +15,7 @@ class Product < ApplicationRecord
   has_many :booking_line_items, as: :bookable
   has_many :bookings, through: :booking_line_items
   has_many :maintenance_jobs, dependent: :destroy
+  has_many :maintenance_schedules, dependent: :destroy
   has_many :asset_assignments, dependent: :destroy
   has_many :asset_logs, dependent: :destroy
   has_many :product_asset_flags, dependent: :destroy
@@ -37,6 +39,7 @@ class Product < ApplicationRecord
 
   belongs_to :product_type, optional: true
   belongs_to :storage_location, class_name: "Location", optional: true
+  belongs_to :maintenance_override_by, class_name: 'User', optional: true
 
   # Monetize
   monetize :daily_price_cents, as: :daily_price, with_model_currency: :daily_price_currency
@@ -80,6 +83,19 @@ class Product < ApplicationRecord
     reserved: 4,
     in_transit: 5,
     retired_state: 6
+  }, prefix: true
+
+  enum :maintenance_status, {
+    current: 0,
+    due_soon: 1,
+    overdue: 2,
+    in_maintenance: 3
+  }, prefix: true
+
+  enum :depreciation_method, {
+    straight_line: 0,
+    declining_balance: 1,
+    units_of_production: 2
   }, prefix: true
 
   # Validations
@@ -258,6 +274,67 @@ class Product < ApplicationRecord
     self.last_depreciation_date = Date.today
   end
 
+  # Calculate total accumulated depreciation since purchase
+  def accumulated_depreciation
+    return 0 unless purchase_date.present? && purchase_price_cents.present?
+
+    if depreciation_method.present? && depreciation_rate.present?
+      case depreciation_method.to_sym
+      when :straight_line
+        straight_line_depreciation
+      when :declining_balance
+        declining_balance_depreciation
+      else
+        straight_line_depreciation
+      end
+    else
+      # Default: straight line over 5 years if no method specified
+      years_owned = (Date.current - purchase_date).to_i / 365.0
+      annual_depreciation = purchase_price_cents / 5.0
+      [annual_depreciation * years_owned, purchase_price_cents].min.round(0)
+    end
+  end
+
+  # Calculate depreciation for a specific period
+  def depreciation_for_period(start_date, end_date)
+    return 0 unless purchase_date.present? && purchase_price_cents.present?
+
+    days_in_period = (end_date - start_date).to_i + 1
+    total_depreciation = accumulated_depreciation
+    days_owned = (Date.current - purchase_date).to_i
+
+    return 0 if days_owned.zero?
+
+    # Prorate depreciation for this period
+    (total_depreciation.to_f / days_owned * days_in_period).round(0)
+  end
+
+  private
+
+  def straight_line_depreciation
+    # Straight line: (Cost - Residual Value) / Useful Life
+    useful_life_years = (100.0 / depreciation_rate).round(0)
+    residual = residual_value_cents || 0
+    depreciable_amount = purchase_price_cents - residual
+
+    years_owned = (Date.current - purchase_date).to_i / 365.0
+    annual_depreciation = depreciable_amount / useful_life_years
+
+    [annual_depreciation * years_owned, depreciable_amount].min.round(0)
+  end
+
+  def declining_balance_depreciation
+    # Declining balance: remaining value * depreciation rate each year
+    return 0 if depreciation_rate.zero?
+
+    years_owned = (Date.current - purchase_date).to_i / 365.0
+    remaining_value = purchase_price_cents * ((1 - depreciation_rate / 100.0) ** years_owned)
+    residual = residual_value_cents || 0
+
+    total_depreciation = purchase_price_cents - remaining_value
+    [total_depreciation, purchase_price_cents - residual].min.round(0)
+  end
+
   # Check if insurance is expired
   def insurance_expired?
     return false unless insurance_required? && insurance_expiry.present?
@@ -310,7 +387,8 @@ class Product < ApplicationRecord
     return unless item_type_sale? && tracks_inventory?
 
     if stock_on_hand < quantity_sold
-      raise ActiveRecord::RecordInvalid, "Insufficient stock. Available: #{stock_on_hand}, Requested: #{quantity_sold}"
+      errors.add(:stock_on_hand, "Insufficient stock. Available: #{stock_on_hand}, Requested: #{quantity_sold}")
+      raise ActiveRecord::RecordInvalid.new(self)
     end
 
     update!(stock_on_hand: stock_on_hand - quantity_sold)
@@ -441,6 +519,35 @@ class Product < ApplicationRecord
   def currently_available?
     workflow_state_available? && !in_maintenance? && !out_of_service? && !in_transit? &&
       (reserved_until.blank? || reserved_until < Time.current)
+  end
+
+  # Maintenance status methods
+  def maintenance_required?
+    maintenance_schedules.enabled.overdue.any?
+  end
+
+  def allow_maintenance_override!(user:, reason:)
+    update!(
+      maintenance_override_by: user,
+      maintenance_override_reason: reason,
+      maintenance_override_at: Time.current,
+      maintenance_status: :current
+    )
+  end
+
+  def clear_maintenance_override!
+    update!(
+      maintenance_override_by: nil,
+      maintenance_override_reason: nil,
+      maintenance_override_at: nil
+    )
+  end
+
+  def available_for_booking?
+    return false unless currently_available?
+    return false if maintenance_status_overdue? || maintenance_status_in_maintenance?
+    return false if maintenance_required? && maintenance_override_by.nil?
+    true
   end
 
   # Utilization metrics

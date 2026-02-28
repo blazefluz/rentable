@@ -1,5 +1,6 @@
 FactoryBot.define do
   factory :location do
+    association :company
     name { Faker::Address.city }
     address { Faker::Address.full_address }
     notes { Faker::Lorem.sentence }

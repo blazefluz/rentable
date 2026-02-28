@@ -1,0 +1,63 @@
+<!DOCTYPE html>
+<html>
+  <head>
+    <meta content='text/html; charset=UTF-8' http-equiv='Content-Type' />
+    <style>
+      body { font-family: Arial, sans-serif; line-height: 1.6; color: #333; }
+      .container { max-width: 600px; margin: 0 auto; padding: 20px; }
+      .header { background-color: #007BFF; color: white; padding: 20px; text-align: center; border-radius: 5px 5px 0 0; }
+      .content { background-color: #f9f9f9; padding: 30px; border: 1px solid #ddd; border-top: none; }
+      .product-info { background-color: white; padding: 15px; margin: 20px 0; border-left: 4px solid #007BFF; }
+      .priority-critical { background-color: #DC3545; color: white; padding: 8px 16px; border-radius: 4px; font-weight: bold; display: inline-block; margin: 10px 0; }
+      .priority-high { background-color: #FFA500; color: white; padding: 8px 16px; border-radius: 4px; font-weight: bold; display: inline-block; margin: 10px 0; }
+      .priority-normal { background-color: #28A745; color: white; padding: 8px 16px; border-radius: 4px; font-weight: bold; display: inline-block; margin: 10px 0; }
+      .info { background-color: #D1ECF1; border: 1px solid #BEE5EB; padding: 15px; margin: 20px 0; border-radius: 4px; color: #0C5460; }
+      .footer { text-align: center; padding: 20px; color: #666; font-size: 12px; }
+    </style>
+  </head>
+  <body>
+    <div class="container">
+      <div class="header">
+        <h1>🔧 New Maintenance Job Assigned</h1>
+      </div>
+      <div class="content">
+        <p>Hi <%= @technician.name %>,</p>
+        <p>A new maintenance job has been assigned to you:</p>
+        <div class="product-info">
+          <% if @priority == 'critical' %>
+            <span class="priority-critical">⚠️ CRITICAL PRIORITY</span>
+          <% elsif @priority == 'high' %>
+            <span class="priority-high">HIGH PRIORITY</span>
+          <% else %>
+            <span class="priority-normal">NORMAL PRIORITY</span>
+          <% end %>
+          <h3><%= @product.name %></h3>
+          <p><strong>Barcode:</strong> <%= @product.barcode %></p>
+          <p><strong>Job Title:</strong> <%= @job.title %></p>
+          <% if @job.description.present? %>
+            <p><strong>Description:</strong> <%= @job.description %></p>
+          <% end %>
+          <p><strong>Priority:</strong> <%= @priority.to_s.titleize %></p>
+        </div>
+        <div class="info">
+          <% if @scheduled_for %>
+            <strong>📅 Scheduled For:</strong> <%= @scheduled_for.strftime('%B %d, %Y at %I:%M %p') %><br/>
+          <% end %>
+          <% if @estimated_duration %>
+            <strong>⏱️ Estimated Duration:</strong> <%= @estimated_duration %> hour(s)
+          <% end %>
+        </div>
+        <% if @priority == 'critical' %>
+          <p><strong style="color: #DC3545;">This is a critical priority job that requires immediate attention.</strong> Please review the job details and begin work as soon as possible.</p>
+        <% else %>
+          <p>Please review the job details and schedule your work accordingly.</p>
+        <% end %>
+        <p style="margin-top: 30px;">If you have any questions or need additional information, please contact your supervisor.</p>
+      </div>
+      <div class="footer">
+        <p>This is an automated notification from your Rentable system.</p>
+        <p>© <%= Time.current.year %> Rentable. All rights reserved.</p>
+      </div>
+    </div>
+  </body>
+</html>

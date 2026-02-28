@@ -7,6 +7,7 @@ class ProductInstance < ApplicationRecord
   # Associations
   belongs_to :product
   belongs_to :current_location, class_name: "Location", optional: true
+  belongs_to :maintenance_override_by, class_name: 'User', optional: true
   has_many :booking_line_item_instances, dependent: :destroy
   has_many :booking_line_items, through: :booking_line_item_instances
   has_many :bookings, through: :booking_line_items
@@ -34,6 +35,13 @@ class ProductInstance < ApplicationRecord
     in_transit: 5,
     retired_status: 6
   }, prefix: true
+
+  enum :maintenance_status, {
+    current: 0,
+    due_soon: 1,
+    overdue: 2,
+    in_maintenance: 3
+  }, prefix: true, _default: :current
 
   # Monetize
   monetize :purchase_price_cents, as: :purchase_price, with_model_currency: :purchase_price_currency, allow_nil: true
@@ -98,6 +106,36 @@ class ProductInstance < ApplicationRecord
 
   def currently_with_customer?
     bookings.exists?(status: [:confirmed, :paid])
+  end
+
+  # Maintenance status methods
+  def maintenance_required?
+    # Check if the parent product has overdue maintenance schedules
+    product.maintenance_required?
+  end
+
+  def allow_maintenance_override!(user:, reason:)
+    update!(
+      maintenance_override_by: user,
+      maintenance_override_reason: reason,
+      maintenance_override_at: Time.current,
+      maintenance_status: :current
+    )
+  end
+
+  def clear_maintenance_override!
+    update!(
+      maintenance_override_by: nil,
+      maintenance_override_reason: nil,
+      maintenance_override_at: nil
+    )
+  end
+
+  def available_for_booking?
+    return false unless status_available?
+    return false if maintenance_status_overdue? || maintenance_status_in_maintenance?
+    return false if maintenance_required? && maintenance_override_by.nil?
+    true
   end
 
   private

@@ -1,5 +1,6 @@
 FactoryBot.define do
   factory :booking do
+    association :company
     start_date { 3.days.from_now }
     end_date { 7.days.from_now }
     customer_name { Faker::Name.name }
@@ -29,7 +30,7 @@ FactoryBot.define do
 
     trait :with_line_items do
       after(:create) do |booking|
-        create(:booking_line_item, booking: booking, bookable: create(:product))
+        create(:booking_line_item, booking: booking, bookable: create(:product, company: booking.company))
       end
     end
 

@@ -1,0 +1,582 @@
+require 'rails_helper'
+
+RSpec.describe 'Api::V1::Bookings', type: :request do
+  let(:company) { create(:company) }
+  let(:user) { create(:user, :admin, company: company) }
+  let(:client) { create(:client, company: company) }
+  let(:location) { create(:location, company: company) }
+  let(:product) { create(:product, company: company, quantity: 10, daily_price_cents: 5000) }
+  let!(:bookings) { create_list(:booking, 3, company: company) }
+  let(:booking) { bookings.first }
+  let(:auth_headers) { { 'Authorization' => "Bearer #{user.generate_jwt}", 'Content-Type' => 'application/json' } }
+
+  before do
+    # Set tenant context for multi-tenancy
+    ActsAsTenant.current_tenant = company
+  end
+
+  describe 'GET /api/v1/bookings' do
+    context 'basic listing' do
+      it 'returns all bookings' do
+        get '/api/v1/bookings'
+        expect(response).to have_http_status(:success)
+        json = JSON.parse(response.body)
+        expect(json['bookings'].length).to eq(3)
+        expect(json).to have_key('meta')
+        expect(json['meta']).to have_key('current_page')
+        expect(json['meta']).to have_key('total_count')
+      end
+
+      it 'paginates results' do
+        create_list(:booking, 30, company: company)
+        get '/api/v1/bookings', params: { per_page: 10, page: 1 }
+        expect(response).to have_http_status(:success)
+        json = JSON.parse(response.body)
+        expect(json['bookings'].length).to eq(10)
+        expect(json['meta']['total_pages']).to be > 1
+      end
+
+      it 'does not return deleted bookings by default' do
+        deleted_booking = create(:booking, company: company, deleted: true)
+        get '/api/v1/bookings'
+        json = JSON.parse(response.body)
+        booking_ids = json['bookings'].map { |b| b['id'] }
+        expect(booking_ids).not_to include(deleted_booking.id)
+      end
+    end
+
+    context 'filtering' do
+      it 'filters by status' do
+        confirmed = create(:booking, status: :confirmed, company: company)
+        create(:booking, status: :pending, company: company)
+        get '/api/v1/bookings', params: { status: 'confirmed' }
+        expect(response).to have_http_status(:success)
+        json = JSON.parse(response.body)
+        expect(json['bookings'].all? { |b| b['status'] == 'confirmed' }).to be true
+      end
+
+      it 'filters by client_id' do
+        client_booking = create(:booking, client: client, company: company)
+        get '/api/v1/bookings', params: { client_id: client.id }
+        json = JSON.parse(response.body)
+        expect(json['bookings'].all? { |b| b['client']&.fetch('id') == client.id }).to be true
+      end
+
+      it 'filters by manager_id' do
+        manager_booking = create(:booking, manager: user, company: company)
+        get '/api/v1/bookings', params: { manager_id: user.id }
+        json = JSON.parse(response.body)
+        expect(json['bookings'].any? { |b| b['manager']&.fetch('id') == user.id }).to be true
+      end
+
+      it 'filters archived bookings' do
+        archived = create(:booking, archived: true, company: company)
+        get '/api/v1/bookings', params: { archived: 'true' }
+        json = JSON.parse(response.body)
+        expect(json['bookings'].all? { |b| b['archived'] == true }).to be true
+      end
+
+      it 'filters non-archived bookings' do
+        get '/api/v1/bookings', params: { archived: 'false' }
+        json = JSON.parse(response.body)
+        expect(json['bookings'].all? { |b| b['archived'] == false }).to be true
+      end
+    end
+
+    context 'response structure' do
+      before do
+        booking.update(
+          client: client,
+          manager: user,
+          venue_location: location
+        )
+        create(:booking_line_item, booking: booking, bookable: product)
+      end
+
+      it 'includes all required fields in booking summary' do
+        get '/api/v1/bookings'
+        json = JSON.parse(response.body)
+        booking_json = json['bookings'].first
+
+        expect(booking_json).to include(
+          'id', 'reference_number', 'start_date', 'end_date', 'rental_days',
+          'customer', 'status', 'total_price', 'items_count', 'created_at'
+        )
+        expect(booking_json['customer']).to include('name', 'email', 'phone')
+        expect(booking_json['total_price']).to include('amount', 'currency', 'formatted')
+      end
+
+      it 'includes tax information in summary' do
+        get '/api/v1/bookings'
+        json = JSON.parse(response.body)
+        booking_json = json['bookings'].first
+
+        expect(booking_json).to have_key('subtotal')
+        expect(booking_json).to have_key('tax_total')
+        expect(booking_json).to have_key('grand_total')
+        expect(booking_json).to have_key('tax_exempt')
+      end
+    end
+  end
+
+  describe 'GET /api/v1/bookings/:id' do
+    let!(:line_item) { create(:booking_line_item, booking: booking, bookable: product) }
+
+    it 'returns a booking with detailed information' do
+      get "/api/v1/bookings/#{booking.id}"
+      expect(response).to have_http_status(:success)
+      json = JSON.parse(response.body)
+      expect(json['booking']['id']).to eq(booking.id)
+      expect(json['booking']).to have_key('line_items')
+      expect(json['booking']['line_items']).to be_an(Array)
+    end
+
+    it 'includes line item details' do
+      get "/api/v1/bookings/#{booking.id}"
+      json = JSON.parse(response.body)
+      line_item_json = json['booking']['line_items'].first
+
+      expect(line_item_json).to include(
+        'id', 'bookable_type', 'bookable_id', 'bookable_name',
+        'quantity', 'days', 'price_per_day', 'line_subtotal', 'line_total'
+      )
+      expect(line_item_json['price_per_day']).to include('amount', 'currency', 'formatted')
+      expect(line_item_json['line_subtotal']).to include('amount', 'currency', 'formatted')
+    end
+
+    it 'includes tax breakdown for line items' do
+      get "/api/v1/bookings/#{booking.id}"
+      json = JSON.parse(response.body)
+      line_item_json = json['booking']['line_items'].first
+
+      expect(line_item_json).to have_key('tax')
+      expect(line_item_json['tax']).to include(
+        'taxable', 'tax_rate_id', 'tax_rate_name', 'tax_rate_percentage',
+        'tax_amount', 'line_total_with_tax'
+      )
+    end
+
+    it 'includes payments' do
+      create(:payment, booking: booking)
+      get "/api/v1/bookings/#{booking.id}"
+      json = JSON.parse(response.body)
+      expect(json['booking']).to have_key('payments')
+      expect(json['booking']['payments']).to be_an(Array)
+    end
+
+    it 'returns 404 for non-existent booking' do
+      get '/api/v1/bookings/99999'
+      expect(response).to have_http_status(:not_found)
+      json = JSON.parse(response.body)
+      expect(json).to have_key('error')
+    end
+  end
+
+  describe 'POST /api/v1/bookings' do
+    let(:valid_params) do
+      {
+        booking: {
+          start_date: 3.days.from_now,
+          end_date: 7.days.from_now,
+          customer_name: 'Test Customer',
+          customer_email: 'test@example.com',
+          customer_phone: '1234567890',
+          client_id: client.id,
+          manager_id: user.id
+        },
+        line_items: [
+          {
+            bookable_type: 'Product',
+            bookable_id: product.id,
+            quantity: 2
+          }
+        ]
+      }
+    end
+
+    context 'successful creation' do
+      it 'creates a new booking with line items' do
+        expect {
+          post '/api/v1/bookings', params: valid_params
+        }.to change(Booking, :count).by(1)
+          .and change(BookingLineItem, :count).by(1)
+
+        expect(response).to have_http_status(:created)
+        json = JSON.parse(response.body)
+        expect(json).to have_key('booking')
+        expect(json).to have_key('message')
+        expect(json['booking']['customer']['name']).to eq('Test Customer')
+      end
+
+      it 'generates a reference number' do
+        post '/api/v1/bookings', params: valid_params
+        json = JSON.parse(response.body)
+        expect(json['booking']['reference_number']).to match(/^BK\d{8}[A-F0-9]{8}$/)
+      end
+
+      it 'calculates total price automatically' do
+        post '/api/v1/bookings', params: valid_params
+        json = JSON.parse(response.body)
+        booking = Booking.find(json['booking']['id'])
+        expect(booking.total_price_cents).to be > 0
+      end
+
+      it 'sets correct rental days' do
+        post '/api/v1/bookings', params: valid_params
+        json = JSON.parse(response.body)
+        expect(json['booking']['rental_days']).to eq(5) # 3 days from now to 7 days from now
+      end
+    end
+
+    context 'validation errors' do
+      it 'returns error for missing customer_name' do
+        invalid_params = valid_params.deep_dup
+        invalid_params[:booking][:customer_name] = ''
+        post '/api/v1/bookings', params: invalid_params
+        expect(response).to have_http_status(:unprocessable_entity)
+        json = JSON.parse(response.body)
+        expect(json).to have_key('errors')
+        expect(json['errors']).to be_an(Array)
+      end
+
+      it 'returns error for invalid email' do
+        invalid_params = valid_params.deep_dup
+        invalid_params[:booking][:customer_email] = 'invalid-email'
+        post '/api/v1/bookings', params: invalid_params
+        expect(response).to have_http_status(:unprocessable_entity)
+      end
+
+      it 'returns error when end_date is before start_date' do
+        invalid_params = valid_params.deep_dup
+        invalid_params[:booking][:start_date] = 7.days.from_now
+        invalid_params[:booking][:end_date] = 3.days.from_now
+        post '/api/v1/bookings', params: invalid_params
+        expect(response).to have_http_status(:unprocessable_entity)
+      end
+
+      it 'returns error when product is not available' do
+        # Create a booking that uses all available quantity
+        existing_booking = create(:booking,
+          start_date: 3.days.from_now,
+          end_date: 7.days.from_now,
+          company: company
+        )
+        create(:booking_line_item,
+          booking: existing_booking,
+          bookable: product,
+          quantity: 10
+        )
+
+        post '/api/v1/bookings', params: valid_params
+        expect(response).to have_http_status(:unprocessable_entity)
+      end
+    end
+  end
+
+  describe 'PATCH /api/v1/bookings/:id' do
+    it 'updates booking customer information' do
+      patch "/api/v1/bookings/#{booking.id}",
+            params: { booking: { customer_name: 'Updated Name', customer_phone: '9999999999' } }
+      expect(response).to have_http_status(:success)
+      booking.reload
+      expect(booking.customer_name).to eq('Updated Name')
+      expect(booking.customer_phone).to eq('9999999999')
+    end
+
+    it 'updates booking dates' do
+      new_start = 10.days.from_now
+      new_end = 15.days.from_now
+      patch "/api/v1/bookings/#{booking.id}",
+            params: { booking: { start_date: new_start, end_date: new_end } }
+      expect(response).to have_http_status(:success)
+      booking.reload
+      expect(booking.start_date.to_date).to eq(new_start.to_date)
+      expect(booking.end_date.to_date).to eq(new_end.to_date)
+    end
+
+    it 'recalculates line item days when dates change' do
+      line_item = create(:booking_line_item, booking: booking, bookable: product)
+      new_start = 10.days.from_now
+      new_end = 20.days.from_now
+
+      patch "/api/v1/bookings/#{booking.id}",
+            params: { booking: { start_date: new_start, end_date: new_end } }
+
+      line_item.reload
+      expect(line_item.days).to eq(11) # Updated rental days
+    end
+
+    it 'returns error for invalid updates' do
+      patch "/api/v1/bookings/#{booking.id}",
+            params: { booking: { customer_email: 'invalid' } }
+      expect(response).to have_http_status(:unprocessable_entity)
+    end
+  end
+
+  describe 'DELETE /api/v1/bookings/:id' do
+    it 'soft deletes a booking' do
+      delete "/api/v1/bookings/#{booking.id}"
+      expect(response).to have_http_status(:success)
+      json = JSON.parse(response.body)
+      expect(json).to have_key('message')
+      expect(booking.reload.deleted).to be true
+    end
+
+    it 'does not show soft-deleted bookings in listing' do
+      delete "/api/v1/bookings/#{booking.id}"
+      get '/api/v1/bookings'
+      json = JSON.parse(response.body)
+      booking_ids = json['bookings'].map { |b| b['id'] }
+      expect(booking_ids).not_to include(booking.id)
+    end
+  end
+
+  describe 'PATCH /api/v1/bookings/:id/confirm' do
+    let(:pending_booking) { create(:booking, status: :pending, company: company) }
+
+    it 'confirms a pending booking' do
+      patch "/api/v1/bookings/#{pending_booking.id}/confirm"
+      expect(response).to have_http_status(:success)
+      expect(pending_booking.reload.status).to eq('confirmed')
+    end
+
+    it 'returns the updated booking' do
+      patch "/api/v1/bookings/#{pending_booking.id}/confirm"
+      json = JSON.parse(response.body)
+      expect(json['booking']['status']).to eq('confirmed')
+      expect(json).to have_key('message')
+    end
+  end
+
+  describe 'PATCH /api/v1/bookings/:id/cancel' do
+    it 'cancels a booking' do
+      patch "/api/v1/bookings/#{booking.id}/cancel"
+      expect(response).to have_http_status(:success)
+      expect(booking.reload.status).to eq('cancelled')
+    end
+
+    it 'returns the cancelled booking' do
+      patch "/api/v1/bookings/#{booking.id}/cancel"
+      json = JSON.parse(response.body)
+      expect(json['booking']['status']).to eq('cancelled')
+    end
+  end
+
+  describe 'PATCH /api/v1/bookings/:id/complete' do
+    let(:confirmed_booking) { create(:booking, status: :confirmed, company: company) }
+
+    it 'marks booking as completed' do
+      patch "/api/v1/bookings/#{confirmed_booking.id}/complete"
+      expect(response).to have_http_status(:success)
+      expect(confirmed_booking.reload.status).to eq('completed')
+    end
+  end
+
+  describe 'PATCH /api/v1/bookings/:id/archive' do
+    it 'archives a booking' do
+      patch "/api/v1/bookings/#{booking.id}/archive"
+      expect(response).to have_http_status(:success)
+      expect(booking.reload.archived).to be true
+    end
+
+    it 'returns success message' do
+      patch "/api/v1/bookings/#{booking.id}/archive"
+      json = JSON.parse(response.body)
+      expect(json).to have_key('message')
+      expect(json['message']).to include('archived')
+    end
+  end
+
+  describe 'PATCH /api/v1/bookings/:id/unarchive' do
+    let(:archived_booking) { create(:booking, archived: true, company: company) }
+
+    it 'unarchives a booking' do
+      patch "/api/v1/bookings/#{archived_booking.id}/unarchive"
+      expect(response).to have_http_status(:success)
+      expect(archived_booking.reload.archived).to be false
+    end
+  end
+
+  describe 'PATCH /api/v1/bookings/:id/extend' do
+    let!(:line_item) { create(:booking_line_item, booking: booking, bookable: product, quantity: 2) }
+
+    before do
+      booking.update(
+        start_date: 3.days.from_now,
+        end_date: 7.days.from_now
+      )
+    end
+
+    context 'successful extension' do
+      it 'extends the booking end date' do
+        new_end = 10.days.from_now
+        patch "/api/v1/bookings/#{booking.id}/extend",
+              params: { new_end_date: new_end.to_date.to_s }
+
+        expect(response).to have_http_status(:success)
+        expect(booking.reload.end_date.to_date).to eq(new_end.to_date)
+      end
+
+      it 'calculates additional cost correctly' do
+        new_end = 10.days.from_now
+        patch "/api/v1/bookings/#{booking.id}/extend",
+              params: { new_end_date: new_end.to_date.to_s }
+
+        json = JSON.parse(response.body)
+        expect(json['extension']).to have_key('additional_cost')
+        expect(json['extension']['additional_days']).to eq(3)
+      end
+
+      it 'returns extension details' do
+        new_end = 10.days.from_now
+        patch "/api/v1/bookings/#{booking.id}/extend",
+              params: { new_end_date: new_end.to_date.to_s }
+
+        json = JSON.parse(response.body)
+        expect(json).to have_key('extension')
+        expect(json['extension']).to include(
+          'old_end_date', 'new_end_date', 'additional_days', 'additional_cost'
+        )
+      end
+    end
+
+    context 'validation errors' do
+      it 'returns error when new_end_date is missing' do
+        patch "/api/v1/bookings/#{booking.id}/extend"
+        expect(response).to have_http_status(:bad_request)
+        json = JSON.parse(response.body)
+        expect(json['error']).to include('required')
+      end
+
+      it 'returns error when new_end_date is before current end_date' do
+        patch "/api/v1/bookings/#{booking.id}/extend",
+              params: { new_end_date: 5.days.from_now.to_date.to_s }
+
+        expect(response).to have_http_status(:bad_request)
+        json = JSON.parse(response.body)
+        expect(json['error']).to include('after')
+      end
+
+      it 'returns error when items are not available for extension' do
+        # Book all product quantity for the extension period
+        conflicting_booking = create(:booking,
+          start_date: 8.days.from_now,
+          end_date: 12.days.from_now,
+          company: company
+        )
+        create(:booking_line_item,
+          booking: conflicting_booking,
+          bookable: product,
+          quantity: 10
+        )
+
+        patch "/api/v1/bookings/#{booking.id}/extend",
+              params: { new_end_date: 10.days.from_now.to_date.to_s }
+
+        expect(response).to have_http_status(:unprocessable_entity)
+        json = JSON.parse(response.body)
+        expect(json['error']).to include('not available')
+      end
+    end
+  end
+
+  describe 'GET /api/v1/bookings/check_availability' do
+    let(:start_date) { 10.days.from_now.to_date }
+    let(:end_date) { 15.days.from_now.to_date }
+
+    context 'successful availability check' do
+      it 'returns availability for requested items' do
+        params = {
+          start_date: start_date.to_s,
+          end_date: end_date.to_s,
+          items: [
+            { bookable_type: 'Product', bookable_id: product.id, quantity: 2 }
+          ]
+        }
+
+        get '/api/v1/bookings/check_availability', params: params
+        expect(response).to have_http_status(:success)
+
+        json = JSON.parse(response.body)
+        expect(json).to have_key('all_available')
+        expect(json).to have_key('items')
+        expect(json).to have_key('date_range')
+      end
+
+      it 'includes availability details for each item' do
+        params = {
+          start_date: start_date.to_s,
+          end_date: end_date.to_s,
+          items: [
+            { bookable_type: 'Product', bookable_id: product.id, quantity: 2 }
+          ]
+        }
+
+        get '/api/v1/bookings/check_availability', params: params
+        json = JSON.parse(response.body)
+        item = json['items'].first
+
+        expect(item).to include(
+          'bookable_type', 'bookable_id', 'bookable_name',
+          'requested_quantity', 'available_quantity', 'is_available'
+        )
+      end
+
+      it 'correctly identifies when all items are available' do
+        params = {
+          start_date: start_date.to_s,
+          end_date: end_date.to_s,
+          items: [
+            { bookable_type: 'Product', bookable_id: product.id, quantity: 5 }
+          ]
+        }
+
+        get '/api/v1/bookings/check_availability', params: params
+        json = JSON.parse(response.body)
+        expect(json['all_available']).to be true
+      end
+
+      it 'correctly identifies when items are not available' do
+        # Create booking that uses most of the quantity
+        existing = create(:booking,
+          start_date: start_date,
+          end_date: end_date,
+          company: company
+        )
+        create(:booking_line_item,
+          booking: existing,
+          bookable: product,
+          quantity: 8
+        )
+
+        params = {
+          start_date: start_date.to_s,
+          end_date: end_date.to_s,
+          items: [
+            { bookable_type: 'Product', bookable_id: product.id, quantity: 5 }
+          ]
+        }
+
+        get '/api/v1/bookings/check_availability', params: params
+        json = JSON.parse(response.body)
+        expect(json['all_available']).to be false
+        expect(json['items'].first['is_available']).to be false
+      end
+    end
+
+    context 'error handling' do
+      it 'returns error for invalid date format' do
+        params = {
+          start_date: 'invalid-date',
+          end_date: end_date.to_s,
+          items: []
+        }
+
+        get '/api/v1/bookings/check_availability', params: params
+        expect(response).to have_http_status(:bad_request)
+        json = JSON.parse(response.body)
+        expect(json['error']).to include('Invalid date')
+      end
+    end
+  end
+end

@@ -1,0 +1,28 @@
+*** OVERDUE MAINTENANCE ***
+
+Hi <%= @recipient.name %>,
+
+URGENT: Maintenance is overdue for the following equipment:
+
+*** OVERDUE ***
+
+Product: <%= @product.name %>
+Barcode: <%= @product.barcode %>
+Maintenance Task: <%= @schedule.name %>
+Description: <%= @schedule.description %>
+Frequency: Every <%= @schedule.interval_value %> <%= @schedule.interval_unit %>
+
+DUE DATE: <%= @schedule.next_due_date.strftime('%B %d, %Y at %I:%M %p') %>
+DAYS OVERDUE: <%= @days_overdue %> day(s)
+
+<% if @schedule.last_completed_at %>
+Last Completed: <%= @schedule.last_completed_at.strftime('%B %d, %Y') %>
+<% end %>
+
+This maintenance is overdue and requires immediate attention. The equipment may be automatically blocked from rentals until this maintenance is completed.
+
+Please complete this maintenance immediately or contact your supervisor if there are any issues preventing completion.
+
+---
+This is an automated notification from your Rentable system.
+© <%= Time.current.year %> Rentable. All rights reserved.

@@ -1,5 +1,27 @@
 # This file is copied to spec/ when you run 'rails generate rspec:install'
 require 'spec_helper'
+
+# Stub ActionCable for API-only mode (RSpec Rails 7.1 compatibility fix)
+# This must be defined before loading Rails environment
+module ActionCable
+  module Connection
+    class Base
+    end
+    class TestCase
+      module Behavior
+      end
+    end
+  end
+  module Channel
+    class Base
+    end
+    class TestCase
+      module Behavior
+      end
+    end
+  end
+end
+
 ENV['RAILS_ENV'] ||= 'test'
 require_relative '../config/environment'
 # Prevent database truncation if the environment is production
@@ -7,6 +29,7 @@ abort("The Rails environment is running in production mode!") if Rails.env.produ
 # Uncomment the line below in case you have `--require rails_helper` in the `.rspec` file
 # that will avoid rails generators crashing because migrations haven't been run yet
 # return unless Rails.env.test?
+
 require 'rspec/rails'
 # Add additional requires below this line. Rails is not loaded until this point!
 require 'database_cleaner/active_record'

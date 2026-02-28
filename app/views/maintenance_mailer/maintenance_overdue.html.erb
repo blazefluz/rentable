@@ -1,0 +1,48 @@
+<!DOCTYPE html>
+<html>
+  <head>
+    <meta content='text/html; charset=UTF-8' http-equiv='Content-Type' />
+    <style>
+      body { font-family: Arial, sans-serif; line-height: 1.6; color: #333; }
+      .container { max-width: 600px; margin: 0 auto; padding: 20px; }
+      .header { background-color: #DC3545; color: white; padding: 20px; text-align: center; border-radius: 5px 5px 0 0; }
+      .content { background-color: #f9f9f9; padding: 30px; border: 1px solid #ddd; border-top: none; }
+      .product-info { background-color: white; padding: 15px; margin: 20px 0; border-left: 4px solid #DC3545; }
+      .overdue-badge { background-color: #DC3545; color: white; padding: 8px 16px; border-radius: 4px; font-weight: bold; display: inline-block; margin: 10px 0; }
+      .alert { background-color: #F8D7DA; border: 1px solid #F5C6CB; padding: 15px; margin: 20px 0; border-radius: 4px; color: #721C24; }
+      .footer { text-align: center; padding: 20px; color: #666; font-size: 12px; }
+    </style>
+  </head>
+  <body>
+    <div class="container">
+      <div class="header">
+        <h1>🚨 OVERDUE MAINTENANCE</h1>
+      </div>
+      <div class="content">
+        <p>Hi <%= @recipient.name %>,</p>
+        <p><strong>URGENT:</strong> Maintenance is overdue for the following equipment:</p>
+        <div class="product-info">
+          <span class="overdue-badge">OVERDUE</span>
+          <h3><%= @product.name %></h3>
+          <p><strong>Barcode:</strong> <%= @product.barcode %></p>
+          <p><strong>Maintenance Task:</strong> <%= @schedule.name %></p>
+          <p><strong>Description:</strong> <%= @schedule.description %></p>
+          <p><strong>Frequency:</strong> Every <%= @schedule.interval_value %> <%= @schedule.interval_unit %></p>
+        </div>
+        <div class="alert">
+          <strong>⚠️ Due Date:</strong> <%= @schedule.next_due_date.strftime('%B %d, %Y at %I:%M %p') %><br/>
+          <strong>🕐 Days Overdue:</strong> <%= @days_overdue %> day(s)
+        </div>
+        <% if @schedule.last_completed_at %>
+          <p><strong>Last Completed:</strong> <%= @schedule.last_completed_at.strftime('%B %d, %Y') %></p>
+        <% end %>
+        <p><strong style="color: #DC3545;">This maintenance is overdue and requires immediate attention.</strong> The equipment may be automatically blocked from rentals until this maintenance is completed.</p>
+        <p style="margin-top: 30px;">Please complete this maintenance immediately or contact your supervisor if there are any issues preventing completion.</p>
+      </div>
+      <div class="footer">
+        <p>This is an automated notification from your Rentable system.</p>
+        <p>© <%= Time.current.year %> Rentable. All rights reserved.</p>
+      </div>
+    </div>
+  </body>
+</html>

@@ -1,0 +1,40 @@
+NEW MAINTENANCE JOB ASSIGNED
+
+Hi <%= @technician.name %>,
+
+A new maintenance job has been assigned to you:
+
+<% if @priority == 'critical' %>
+*** CRITICAL PRIORITY ***
+<% elsif @priority == 'high' %>
+*** HIGH PRIORITY ***
+<% else %>
+*** NORMAL PRIORITY ***
+<% end %>
+
+Product: <%= @product.name %>
+Barcode: <%= @product.barcode %>
+Job Title: <%= @job.title %>
+<% if @job.description.present? %>
+Description: <%= @job.description %>
+<% end %>
+Priority: <%= @priority.to_s.titleize %>
+
+<% if @scheduled_for %>
+Scheduled For: <%= @scheduled_for.strftime('%B %d, %Y at %I:%M %p') %>
+<% end %>
+<% if @estimated_duration %>
+Estimated Duration: <%= @estimated_duration %> hour(s)
+<% end %>
+
+<% if @priority == 'critical' %>
+This is a critical priority job that requires immediate attention. Please review the job details and begin work as soon as possible.
+<% else %>
+Please review the job details and schedule your work accordingly.
+<% end %>
+
+If you have any questions or need additional information, please contact your supervisor.
+
+---
+This is an automated notification from your Rentable system.
+© <%= Time.current.year %> Rentable. All rights reserved.

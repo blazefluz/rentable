@@ -1,0 +1,47 @@
+<!DOCTYPE html>
+<html>
+  <head>
+    <meta content='text/html; charset=UTF-8' http-equiv='Content-Type' />
+    <style>
+      body { font-family: Arial, sans-serif; line-height: 1.6; color: #333; }
+      .container { max-width: 600px; margin: 0 auto; padding: 20px; }
+      .header { background-color: #FFA500; color: white; padding: 20px; text-align: center; border-radius: 5px 5px 0 0; }
+      .content { background-color: #f9f9f9; padding: 30px; border: 1px solid #ddd; border-top: none; }
+      .product-info { background-color: white; padding: 15px; margin: 20px 0; border-left: 4px solid #FFA500; }
+      .warning { background-color: #FFF3CD; border: 1px solid #FFE69C; padding: 15px; margin: 20px 0; border-radius: 4px; }
+      .button { display: inline-block; padding: 12px 30px; background-color: #FFA500; color: white; text-decoration: none; border-radius: 4px; margin: 20px 0; }
+      .footer { text-align: center; padding: 20px; color: #666; font-size: 12px; }
+    </style>
+  </head>
+  <body>
+    <div class="container">
+      <div class="header">
+        <h1>⚠️ Maintenance Due Soon</h1>
+      </div>
+      <div class="content">
+        <p>Hi <%= @recipient.name %>,</p>
+        <p>This is a reminder that maintenance is due soon for the following equipment:</p>
+        <div class="product-info">
+          <h3><%= @product.name %></h3>
+          <p><strong>Barcode:</strong> <%= @product.barcode %></p>
+          <p><strong>Maintenance Task:</strong> <%= @schedule.name %></p>
+          <p><strong>Description:</strong> <%= @schedule.description %></p>
+          <p><strong>Frequency:</strong> Every <%= @schedule.interval_value %> <%= @schedule.interval_unit %></p>
+        </div>
+        <div class="warning">
+          <strong>⏰ Due Date:</strong> <%= @schedule.next_due_date.strftime('%B %d, %Y at %I:%M %p') %><br/>
+          <strong>📅 Days Remaining:</strong> <%= @days_until_due %> day(s)
+        </div>
+        <% if @schedule.last_completed_at %>
+          <p><strong>Last Completed:</strong> <%= @schedule.last_completed_at.strftime('%B %d, %Y') %></p>
+        <% end %>
+        <p>Please schedule this maintenance as soon as possible to prevent equipment downtime.</p>
+        <p style="margin-top: 30px;"><strong>Note:</strong> If this maintenance is not completed by the due date, the equipment may be automatically blocked from rentals.</p>
+      </div>
+      <div class="footer">
+        <p>This is an automated notification from your Rentable system.</p>
+        <p>© <%= Time.current.year %> Rentable. All rights reserved.</p>
+      </div>
+    </div>
+  </body>
+</html>

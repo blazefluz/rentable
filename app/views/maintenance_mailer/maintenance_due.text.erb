@@ -1,0 +1,26 @@
+MAINTENANCE DUE SOON
+
+Hi <%= @recipient.name %>,
+
+This is a reminder that maintenance is due soon for the following equipment:
+
+Product: <%= @product.name %>
+Barcode: <%= @product.barcode %>
+Maintenance Task: <%= @schedule.name %>
+Description: <%= @schedule.description %>
+Frequency: Every <%= @schedule.interval_value %> <%= @schedule.interval_unit %>
+
+DUE DATE: <%= @schedule.next_due_date.strftime('%B %d, %Y at %I:%M %p') %>
+DAYS REMAINING: <%= @days_until_due %> day(s)
+
+<% if @schedule.last_completed_at %>
+Last Completed: <%= @schedule.last_completed_at.strftime('%B %d, %Y') %>
+<% end %>
+
+Please schedule this maintenance as soon as possible to prevent equipment downtime.
+
+NOTE: If this maintenance is not completed by the due date, the equipment may be automatically blocked from rentals.
+
+---
+This is an automated notification from your Rentable system.
+© <%= Time.current.year %> Rentable. All rights reserved.
