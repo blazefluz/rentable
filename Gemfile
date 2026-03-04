@@ -108,4 +108,4 @@ gem "rswag-ui", "~> 2.17"
 gem "rswag-specs", "~> 2.17"
 
 # QR Code generation
-gem "rqrcode", "~> 2.0"
+gem "rqrcode", "~> 3.2"
